@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Minecraft Compass • Peer-to-Peer Tracker</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PeerJS for WebRTC Direct Mesh -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <!-- QRCode.js for instant mobile scanning -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Google Fonts: Press Start 2P & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --mc-font: 'Press Start 2P', monospace;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      background-color: #141416;
+      background-image: 
+        radial-gradient(circle at 50% 50%, rgba(20, 20, 25, 0.9) 0%, rgba(10, 10, 12, 1) 100%),
+        repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.25) 0px, rgba(0, 0, 0, 0.25) 2px, transparent 2px, transparent 4px);
+    }
+    .mc-font {
+      font-family: var(--mc-font);
+      letter-spacing: 0.5px;
+    }
+    .mc-text-shadow {
+      text-shadow: 2px 2px 0px #1a1a1a;
+    }
+    .mc-gold-shadow {
+      text-shadow: 2px 2px 0px #3f3200;
+    }
+
+    /* Pixelated canvas rendering */
+    canvas.pixelated {
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* Authentic Minecraft Button styles */
+    .mc-btn {
+      position: relative;
+      font-family: var(--mc-font);
+      text-transform: uppercase;
+      font-size: 10px;
+      color: #e0e0e0;
+      background: #767676;
+      border: 3px solid #000000;
+      border-top-color: #acacac;
+      border-left-color: #acacac;
+      border-right-color: #555555;
+      border-bottom-color: #373737;
+      box-shadow: inset -2px -2px 0px #373737, inset 2px 2px 0px #ffffff40;
+      cursor: pointer;
+      transition: all 0.05s ease;
+    }
+    .mc-btn:hover:not(:disabled) {
+      background: #8b8b8b;
+      color: #ffffa0;
+    }
+    .mc-btn:active:not(:disabled) {
+      background: #5a5a5a;
+      border-top-color: #373737;
+      border-left-color: #373737;
+      border-right-color: #acacac;
+      border-bottom-color: #acacac;
+      box-shadow: inset 2px 2px 0px #00000080;
+      transform: translateY(1px);
+    }
+    .mc-btn-green {
+      background: #2e7d32;
+      border-top-color: #66bb6a;
+      border-left-color: #66bb6a;
+      border-right-color: #1b5e20;
+      border-bottom-color: #1b5e20;
+    }
+    .mc-btn-green:hover:not(:disabled) {
+      background: #388e3c;
+    }
+    .mc-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      filter: grayscale(80%);
+    }
+
+    /* Minecraft Item Frame Bevel */
+    .mc-item-frame {
+      background: #4a3420;
+      border: 5px solid #281a0e;
+      box-shadow: 
+        inset 0 0 10px rgba(0,0,0,0.8),
+        0 8px 24px rgba(0,0,0,0.7),
+        inset 3px 3px 0 #7b5837,
+        inset -3px -3px 0 #1f140b;
+      position: relative;
+    }
+    .mc-item-frame::after {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border: 3px dashed rgba(255, 235, 180, 0.15);
+      pointer-events: none;
+    }
+
+    /* Minecraft Tooltip Container */
+    .mc-tooltip {
+      background: rgba(16, 0, 16, 0.94);
+      border: 2px solid #28045a;
+      border-radius: 4px;
+      box-shadow: 0 0 0 1px #110022;
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #111;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #555;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen text-stone-200 flex flex-col justify-between items-center p-3 select-none overflow-x-hidden">
+
+  <!-- Top Header & Status Bar -->
+  <header class="w-full max-w-md flex flex-col items-center gap-2 pt-1 pb-2">
+    <div class="flex items-center justify-between w-full px-2">
+      <div class="flex items-center gap-2">
+        <span class="inline-block w-3 h-3 rounded-none bg-red-600 border border-black shadow"></span>
+        <h1 class="mc-font text-xs sm:text-sm text-yellow-400 mc-gold-shadow tracking-wider">MC PEER COMPASS</h1>
+      </div>
+      <button id="helpModalBtn" class="mc-btn px-2 py-1 text-[9px]">?</button>
+    </div>
+
+    <!-- Sandbox / Mode Notice Banner -->
+    <div id="sandboxNotice" class="hidden w-full py-1 px-2.5 bg-amber-950/80 border border-amber-600/70 text-[9px] text-amber-200 rounded-sm flex items-center justify-between">
+      <span>🛡️ Canvas Sandbox active: Using local channel (Works on GitHub Pages)</span>
+      <button id="dismissNoticeBtn" class="text-amber-400 font-bold ml-1">✕</button>
+    </div>
+
+    <!-- Peer Connection Pill -->
+    <div id="connBadge" class="w-full py-1.5 px-3 bg-stone-900/90 border-2 border-stone-700 flex items-center justify-between rounded-sm">
+      <div class="flex items-center gap-2">
+        <span id="connLight" class="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span>
+        <span id="connStatusText" class="mc-font text-[9px] text-stone-300">DISCONNECTED</span>
+      </div>
+      <div id="roomCodeDisplay" class="mc-font text-[9px] text-yellow-300 tracking-wider">ROOM: ----</div>
+    </div>
+  </header>
+
+  <main class="w-full max-w-md flex flex-col items-center justify-center flex-grow my-1">
+    
+    <!-- Item Frame & Compass Viewport -->
+    <div class="mc-item-frame w-64 h-64 sm:w-72 sm:h-72 rounded-sm flex items-center justify-center relative p-3">
+      <!-- Compass 16x16 scaled up canvas -->
+      <canvas id="compassCanvas" width="256" height="256" class="pixelated w-full h-full drop-shadow-2xl"></canvas>
+      
+      <!-- Needle Angle indicator badge (overlay) -->
+      <div class="absolute bottom-2 right-2 bg-black/75 px-1.5 py-0.5 border border-stone-700 pointer-events-none">
+        <span id="needleDegText" class="mc-font text-[8px] text-green-400">0°</span>
+      </div>
+
+      <!-- Quick Direction Indicator -->
+      <div class="absolute top-2 left-2 bg-black/75 px-1.5 py-0.5 border border-stone-700 pointer-events-none">
+        <span id="cardinalText" class="mc-font text-[8px] text-cyan-300">NORTH</span>
+      </div>
+    </div>
+
+    <!-- Target Info HUD Box (Minecraft Item Tooltip style) -->
+    <div class="mc-tooltip w-full mt-3 p-3 text-center shadow-lg border border-purple-950/70">
+      <div class="mc-font text-xs text-yellow-300 tracking-wide mb-1" id="targetNameLabel">TRACKING: WAITING FOR PEER</div>
+      <div class="mc-font text-sm text-white mc-text-shadow font-bold flex items-center justify-center gap-1" id="distanceMainLabel">
+        <span>--</span> <span class="text-xs text-stone-400">blocks</span>
+      </div>
+      <div class="text-[10px] text-stone-400 mt-1 flex justify-center gap-4">
+        <span>Bearing: <strong id="bearingText" class="text-stone-200">--°</strong></span>
+        <span>Heading: <strong id="headingText" class="text-stone-200">--°</strong></span>
+      </div>
+    </div>
+
+    <!-- Required Mobile Sensor Permissions Strip -->
+    <div id="permissionNotice" class="w-full mt-2 grid grid-cols-2 gap-2">
+      <button id="btnRequestOrientation" class="mc-btn py-2 text-[9px] text-amber-200 flex items-center justify-center gap-1">
+        <span>🧭</span> ENABLE COMPASS
+      </button>
+      <button id="btnRequestGps" class="mc-btn py-2 text-[9px] text-emerald-200 flex items-center justify-center gap-1">
+        <span>📍</span> ENABLE GPS
+      </button>
+    </div>
+  </main>
+
+  <footer class="w-full max-w-md flex flex-col gap-2 pb-2">
+    <!-- Action Tab Buttons -->
+    <div class="grid grid-cols-3 gap-1">
+      <button id="tabConnectBtn" class="mc-btn py-2 text-[9px] bg-stone-700">LINK PEER</button>
+      <button id="tabTelemetryBtn" class="mc-btn py-2 text-[9px]">TELEMETRY</button>
+      <button id="tabSimBtn" class="mc-btn py-2 text-[9px]">SIMULATE</button>
+    </div>
+
+    <!-- PANEL 1: Connection & Room Pairing Drawer -->
+    <div id="panelConnect" class="bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2">
+      <div class="flex items-center justify-between">
+        <span class="mc-font text-[9px] text-stone-400 uppercase">Direct Mesh Connection</span>
+        <button id="closeConnectPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
+      </div>
+
+      <!-- Mode Selector -->
+      <div class="grid grid-cols-2 gap-2 mt-1">
+        <button id="btnModeHost" class="mc-btn mc-btn-green py-2 text-[9px]">1. CREATE ROOM</button>
+        <button id="btnModeJoin" class="mc-btn py-2 text-[9px]">2. JOIN ROOM</button>
+      </div>
+
+      <!-- Host View -->
+      <div id="hostSection" class="hidden flex flex-col items-center gap-2 pt-2 border-t border-stone-800">
+        <div class="text-center">
+          <p class="text-[11px] text-stone-300">Scan this QR code with Phone 2 or share code:</p>
+          <div class="mc-font text-lg text-yellow-300 tracking-widest my-1 select-all" id="hostCodeValue">------</div>
+        </div>
+
+        <!-- QR Code wrapper -->
+        <div id="qrcodeBox" class="bg-white p-2.5 rounded-sm shadow-md flex items-center justify-center min-w-[130px] min-h-[130px]"></div>
+
+        <button id="btnCopyInvite" class="mc-btn w-full py-1.5 text-[9px]">📋 COPY INVITE LINK</button>
+        <div id="copyFeedback" class="text-[10px] text-green-400 text-center hidden">Link Copied to Clipboard!</div>
+      </div>
+
+      <!-- Join View -->
+      <div id="joinSection" class="hidden flex flex-col gap-2 pt-2 border-t border-stone-800">
+        <label class="text-[10px] text-stone-300 font-mono">Enter Host Room Code:</label>
+        <div class="flex gap-2">
+          <input id="inputRoomCode" type="text" maxlength="6" placeholder="e.g. 7X4K92" 
+                 class="flex-1 bg-stone-950 border-2 border-stone-700 px-3 py-1.5 text-yellow-400 uppercase mc-font text-xs tracking-wider outline-none focus:border-yellow-500">
+          <button id="btnSubmitJoin" class="mc-btn mc-btn-green px-4 py-2 text-[9px]">CONNECT</button>
+        </div>
+        <p class="text-[9px] text-stone-400 italic">Both devices need an active internet connection to initiate WebRTC peer handshake.</p>
+      </div>
+    </div>
+
+    <!-- PANEL 2: Telemetry & Calibration -->
+    <div id="panelTelemetry" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2.5 text-[11px]">
+      <div class="flex items-center justify-between border-b border-stone-800 pb-1">
+        <span class="mc-font text-[9px] text-stone-400 uppercase">GPS & Calibration Settings</span>
+        <button id="closeTelemetryPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 text-[10px] font-mono bg-black/40 p-2 border border-stone-800">
+        <div>My Lat: <span id="telMyLat" class="text-amber-300">--</span></div>
+        <div>My Lon: <span id="telMyLon" class="text-amber-300">--</span></div>
+        <div>Peer Lat: <span id="telPeerLat" class="text-cyan-300">--</span></div>
+        <div>Peer Lon: <span id="telPeerLon" class="text-cyan-300">--</span></div>
+        <div>GPS Accuracy: <span id="telAcc" class="text-green-300">--</span></div>
+        <div>Motion Source: <span id="telSource" class="text-stone-300">None</span></div>
+      </div>
+
+      <!-- Invert & Calibration Sliders -->
+      <div class="flex flex-col gap-1.5">
+        <div class="flex justify-between items-center text-[10px]">
+          <span>Heading Offset: <strong id="offsetValText" class="text-yellow-400">0°</strong></span>
+          <button id="btnFlip180" class="mc-btn px-2 py-0.5 text-[8px]">+180° FLIP</button>
+        </div>
+        <input id="sliderOffset" type="range" min="0" max="359" value="0" class="w-full accent-yellow-400 cursor-pointer">
+
+        <label class="flex items-center gap-2 text-[10px] text-stone-300 cursor-pointer mt-1">
+          <input type="checkbox" id="checkInvertRot" class="accent-yellow-400">
+          <span>Invert Compass Needle Rotation (Swap CW/CCW)</span>
+        </label>
+        
+        <label class="flex items-center gap-2 text-[10px] text-stone-300 cursor-pointer">
+          <input type="checkbox" id="checkNeedleJitter" checked class="accent-yellow-400">
+          <span>Minecraft Needle Spring & Jitter Physics</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- PANEL 3: Simulator (For testing without 2 phones) -->
+    <div id="panelSim" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2">
+      <div class="flex items-center justify-between border-b border-stone-800 pb-1">
+        <span class="mc-font text-[9px] text-yellow-400 uppercase">Offline Test Simulator</span>
+        <button id="closeSimPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
+      </div>
+      <p class="text-[10px] text-stone-400">Drag sliders to test needle pointing without requiring two moving phones:</p>
+
+      <div class="flex flex-col gap-1.5 text-[10px]">
+        <div class="flex justify-between">
+          <span>Simulated Phone Heading:</span>
+          <span id="simHeadingVal" class="text-yellow-400 font-mono">0°</span>
+        </div>
+        <input id="simHeadingSlider" type="range" min="0" max="359" value="0" class="w-full accent-yellow-400">
+
+        <div class="flex justify-between mt-1">
+          <span>Simulated Target Direction:</span>
+          <span id="simBearingVal" class="text-cyan-400 font-mono">90° (East)</span>
+        </div>
+        <input id="simBearingSlider" type="range" min="0" max="359" value="90" class="w-full accent-cyan-400">
+
+        <div class="flex justify-between mt-1">
+          <span>Simulated Distance (Blocks):</span>
+          <span id="simDistVal" class="text-green-400 font-mono">64 blocks</span>
+        </div>
+        <input id="simDistSlider" type="range" min="1" max="1000" value="64" class="w-full accent-green-400">
+
+        <button id="btnToggleSimMode" class="mc-btn mc-btn-green py-1.5 text-[9px] mt-1">ENABLE SIMULATION OVERRIDE</button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Help & Info Modal -->
+  <div id="helpModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="mc-tooltip max-w-sm w-full p-4 border-2 border-stone-600 text-stone-300 flex flex-col gap-3">
+      <div class="flex justify-between items-center border-b border-stone-700 pb-2">
+        <h2 class="mc-font text-xs text-yellow-400">HOW TO USE</h2>
+        <button id="closeHelpModal" class="text-stone-400 hover:text-white font-bold text-sm">✕</button>
+      </div>
+      <ol class="text-xs space-y-2 list-decimal list-inside text-stone-300">
+        <li><strong>Open on Phone 1:</strong> Tap <em>Create Room</em> to generate a code or QR code.</li>
+        <li><strong>Open on Phone 2:</strong> Scan the QR code or enter the 6-letter room code.</li>
+        <li><strong>Grant Permissions:</strong> Tap <em>Enable Compass</em> and <em>Enable GPS</em> on both phones.</li>
+        <li><strong>Hold phones flat:</strong> The needle will wobble and point directly toward the location of the other phone in real time!</li>
+      </ol>
+      <div class="bg-black/50 p-2 text-[10px] text-stone-400 border border-stone-800">
+        💡 <strong>Tip:</strong> If your compass points backwards on your particular Android or iPhone model, tap <em>Telemetry</em> and click <strong>+180° Flip</strong>.
+      </div>
+      <button id="btnCloseHelpModalBtn" class="mc-btn py-1.5 text-[9px]">GOT IT</button>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================
+     * MINECRAFT COMPASS PEER APPLICATION
+     * Single-file standalone P2P WebRTC Tracker
+     * ========================================================= */
+
+    // Application State
+    const state = {
+      // Identity & Networking
+      peer: null,
+      conn: null,
+      peerId: null,
+      roomCode: null,
+      isHost: false,
+      isConnected: false,
+      bc: null, // BroadcastChannel fallback for sandboxed/multi-tab environments
+      isLocalFallback: false,
+
+      // Local Sensors
+      myLat: null,
+      myLon: null,
+      myAccuracy: null,
+      deviceHeading: 0, // 0 = North, 90 = East
+      motionPermitted: false,
+      gpsPermitted: false,
+
+      // Peer Sensors
+      peerLat: null,
+      peerLon: null,
+      peerHeading: null,
+      peerLastSeen: 0,
+
+      // Navigation & Calculation
+      targetBearing: 0,
+      distanceMeters: null,
+      relativeAngle: 0,
+
+      // Calibration & Offsets
+      textureOffset: 0,
+      invertRotation: false,
+      enableSpringPhysics: true,
+
+      // Spring / Wobble Physics State
+      needleDisplayAngle: 0,
+      needleVelocity: 0,
+
+      // Simulation mode
+      simulating: false,
+      simHeading: 0,
+      simBearing: 90,
+      simDistance: 64
+    };
+
+    // DOM Elements
+    const canvas = document.getElementById('compassCanvas');
+    const ctx = canvas.getContext('2d');
+    const connLight = document.getElementById('connLight');
+    const connStatusText = document.getElementById('connStatusText');
+    const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+    const targetNameLabel = document.getElementById('targetNameLabel');
+    const distanceMainLabel = document.getElementById('distanceMainLabel');
+    const bearingText = document.getElementById('bearingText');
+    const headingText = document.getElementById('headingText');
+    const needleDegText = document.getElementById('needleDegText');
+    const cardinalText = document.getElementById('cardinalText');
+
+    // Drawer Panels
+    const panelConnect = document.getElementById('panelConnect');
+    const panelTelemetry = document.getElementById('panelTelemetry');
+    const panelSim = document.getElementById('panelSim');
+    const hostSection = document.getElementById('hostSection');
+    const joinSection = document.getElementById('joinSection');
+    const hostCodeValue = document.getElementById('hostCodeValue');
+    const qrcodeBox = document.getElementById('qrcodeBox');
+    const copyFeedback = document.getElementById('copyFeedback');
+    const sandboxNotice = document.getElementById('sandboxNotice');
+    document.getElementById('dismissNoticeBtn')?.addEventListener('click', () => {
+      sandboxNotice.classList.add('hidden');
+    });
+
+    /**
+     * Calculates great-circle forward azimuth bearing from (lat1, lon1) to (lat2, lon2)
+     * Returns degree in range [0, 360) where 0 is true North
+     */
+    function calculateBearing(lat1, lon1, lat2, lon2) {
+      if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return 0;
+      const phi1 = (lat1 * Math.PI) / 180;
+      const phi2 = (lat2 * Math.PI) / 180;
+      const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+      const y = Math.sin(deltaLambda) * Math.cos(phi2);
+      const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+
+      const theta = Math.atan2(y, x);
+      const bearing = (theta * 180 / Math.PI + 360) % 360;
+      return bearing;
+    }
+
+    /**
+     * Calculates distance between coordinates in meters using the Haversine formula
+     */
+    function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+      if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return null;
+      const R = 6371000; // Earth radius in meters
+      const phi1 = (lat1 * Math.PI) / 180;
+      const phi2 = (lat2 * Math.PI) / 180;
+      const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+      const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+      const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                Math.cos(phi1) * Math.cos(phi2) *
+                Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+      return R * c;
+    }
+
+    /**
+     * Shortest angular difference from angle a to angle b (-180 to 180)
+     */
+    function angleDifference(source, target) {
+      let diff = (target - source + 180) % 360 - 180;
+      return diff < -180 ? diff + 360 : diff;
+    }
+
+    /**
+     * Converts angle to 8-point cardinal abbreviation
+     */
+    function getCardinal(deg) {
+      const dirs = ['NORTH', 'NE', 'EAST', 'SE', 'SOUTH', 'SW', 'WEST', 'NW'];
+      const index = Math.round(((deg % 360) + 360) % 360 / 45) % 8;
+      return dirs[index];
+    }
+
+
+    /**
+     * Procedural Minecraft-style 16x16 compass renderer with 32 rotational positions
+     * Generates genuine Minecraft dial textures onto an off-screen surface
+     */
+    class MinecraftCompassRenderer {
+      constructor() {
+        this.frameCanvas = document.createElement('canvas');
+        this.frameCanvas.width = 16;
+        this.frameCanvas.height = 16;
+        this.fCtx = this.frameCanvas.getContext('2d');
+      }
+
+      /**
+       * Renders the authentic Minecraft 16x16 compass dial into the main 256x256 display canvas
+       * @param {number} angleDegrees - Compass needle angle where 0 points up (Target straight ahead)
+       */
+      draw(destCtx, angleDegrees) {
+        const fc = this.fCtx;
+        fc.clearRect(0, 0, 16, 16);
+
+        // 1. Compass Brass Outer Bezel / Rim (Iconic Minecraft Compass Palette)
+        const C_BORDER_DARK  = '#1e1b18';
+        const C_BEZEL_DARK   = '#423c31';
+        const C_BEZEL_MID    = '#6b5c3c';
+        const C_BEZEL_LIGHT  = '#9c8c5c';
+        const C_FACE_DARK    = '#1a1815';
+        const C_FACE_MID     = '#282420';
+
+        // Outer Dark Shadow Rim
+        fc.fillStyle = C_BORDER_DARK;
+        fc.fillRect(4, 0, 8, 1);
+        fc.fillRect(4, 15, 8, 1);
+        fc.fillRect(0, 4, 1, 8);
+        fc.fillRect(15, 4, 1, 8);
+        fc.fillRect(2, 1, 3, 1);
+        fc.fillRect(11, 1, 3, 1);
+        fc.fillRect(1, 2, 2, 1);
+        fc.fillRect(13, 2, 2, 1);
+        fc.fillRect(1, 13, 2, 1);
+        fc.fillRect(13, 13, 2, 1);
+        fc.fillRect(2, 14, 3, 1);
+        fc.fillRect(11, 14, 3, 1);
+
+        // Inner Brass Casing
+        fc.fillStyle = C_BEZEL_MID;
+        fc.fillRect(4, 1, 8, 2);
+        fc.fillRect(4, 13, 8, 2);
+        fc.fillRect(1, 4, 2, 8);
+        fc.fillRect(13, 4, 2, 8);
+        fc.fillRect(3, 2, 2, 2);
+        fc.fillRect(11, 2, 2, 2);
+        fc.fillRect(3, 12, 2, 2);
+        fc.fillRect(11, 12, 2, 2);
+
+        // Casing Highlights (Top-Left Light Source)
+        fc.fillStyle = C_BEZEL_LIGHT;
+        fc.fillRect(5, 1, 6, 1);
+        fc.fillRect(2, 5, 1, 6);
+        fc.fillRect(3, 3, 2, 1);
+
+        // Casing Shadows (Bottom-Right Shadow)
+        fc.fillStyle = C_BEZEL_DARK;
+        fc.fillRect(5, 14, 6, 1);
+        fc.fillRect(14, 5, 1, 6);
+        fc.fillRect(11, 12, 2, 1);
+
+        // Compass Internal Dial Face
+        fc.fillStyle = C_FACE_MID;
+        fc.fillRect(3, 4, 10, 8);
+        fc.fillRect(4, 3, 8, 10);
+
+        fc.fillStyle = C_FACE_DARK;
+        fc.fillRect(5, 5, 6, 6);
+
+        // 2. Draw Needle Based on Angle
+        // Minecraft needle has 32 discrete rotational frames in native textures
+        const rad = ((angleDegrees - 90) * Math.PI) / 180;
+        const cx = 7.5;
+        const cy = 7.5;
+
+        // Needle Red Tip (Front) and Silver Counter-balance (Tail)
+        const tipDist = 4.8;
+        const tipX = Math.round(cx + Math.cos(rad) * tipDist);
+        const tipY = Math.round(cy + Math.sin(rad) * tipDist);
+
+        const tailDist = 3.6;
+        const tailX = Math.round(cx - Math.cos(rad) * tailDist);
+        const tailY = Math.round(cy - Math.sin(rad) * tailDist);
+
+        // Mid points of needle
+        const midDist = 2.4;
+        const midX = Math.round(cx + Math.cos(rad) * midDist);
+        const midY = Math.round(cy + Math.sin(rad) * midDist);
+
+        // Render Tail (Silver / Off-white)
+        fc.fillStyle = '#6e7072';
+        fc.fillRect(tailX, tailY, 1, 1);
+        fc.fillStyle = '#b3b6ba';
+        fc.fillRect(Math.round((cx + tailX) / 2), Math.round((cy + tailY) / 2), 1, 1);
+
+        // Render Center Pin (Brass/Gold Pivot)
+        fc.fillStyle = '#ffd54f';
+        fc.fillRect(7, 7, 2, 2);
+        fc.fillStyle = '#372b14';
+        fc.fillRect(7, 7, 1, 1);
+
+        // Render Red Needle (Minecraft Redstone needle styling)
+        fc.fillStyle = '#9e1a1a';
+        fc.fillRect(midX, midY, 1, 1);
+        fc.fillStyle = '#e52c2c';
+        fc.fillRect(tipX, tipY, 1, 1);
+
+        // Redstone Shimmer/Core
+        fc.fillStyle = '#ff7b7b';
+        fc.fillRect(Math.round((midX + tipX) / 2), Math.round((midY + tipY) / 2), 1, 1);
+
+        // 3. Blit to High-Res Display Canvas with Crisp Nearest-Neighbor Scaling
+        destCtx.imageSmoothingEnabled = false;
+        destCtx.clearRect(0, 0, destCtx.canvas.width, destCtx.canvas.height);
+        destCtx.drawImage(this.frameCanvas, 0, 0, 16, 16, 0, 0, destCtx.canvas.width, destCtx.canvas.height);
+      }
+    }
+
+    const compassRenderer = new MinecraftCompassRenderer();
+
+    // Generate readable random alphanumeric room IDs
+    function generateRoomCode(len = 6) {
+      const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+      let code = '';
+      for (let i = 0; i < len; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+
+    function initLocalBroadcastChannel(roomCode) {
+      if (state.bc) {
+        try { state.bc.close(); } catch(e){}
+      }
+      try {
+        state.bc = new BroadcastChannel(`mc-compass-${roomCode}`);
+        state.bc.onmessage = (event) => {
+          if (event.data) {
+            handleIncomingPeerData(event.data);
+            if (!state.isConnected) {
+              state.isConnected = true;
+              updateStatusUI('CONNECTED (LOCAL CHANNEL)', 'bg-emerald-500');
+              targetNameLabel.textContent = `TRACKING: LOCAL PEER (${roomCode})`;
+            }
+          }
+        };
+      } catch (err) {
+        console.warn('BroadcastChannel not supported in this browser:', err);
+      }
+    }
+
+    function initPeer(customId = null, onReady = null) {
+      if (state.peer) {
+        try { state.peer.destroy(); } catch(e){}
+      }
+
+      updateStatusUI('INITIALIZING...', 'bg-yellow-500 animate-pulse');
+
+      // Check if WebSockets are allowed before instantiating PeerJS
+      try {
+        state.peer = new Peer(customId, {
+          debug: 0,
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' }
+            ]
+          }
+        });
+
+        state.peer.on('open', (id) => {
+          state.peerId = id;
+          if (onReady) onReady(id);
+        });
+
+        state.peer.on('connection', (connection) => {
+          setupDataConnection(connection);
+        });
+
+        state.peer.on('error', (err) => {
+          console.warn('PeerJS error encountered:', err);
+          if (err.type === 'unavailable-id') {
+            initPeer('MC-' + generateRoomCode(), onReady);
+            return;
+          }
+          fallbackToLocalMode(onReady);
+        });
+
+        state.peer.on('disconnected', () => {
+          updateStatusUI('RECONNECTING...', 'bg-yellow-500 animate-pulse');
+          try { state.peer.reconnect(); } catch(e){}
+        });
+
+      } catch (securityOrNetError) {
+        // Catches immediate SecurityError in restricted Canvas iframes
+        console.warn('Sandboxed environment prevented external WebSocket:', securityOrNetError);
+        fallbackToLocalMode(onReady);
+      }
+    }
+
+    function fallbackToLocalMode(onReady = null) {
+      state.isLocalFallback = true;
+      if (sandboxNotice) sandboxNotice.classList.remove('hidden');
+
+      const room = state.roomCode || 'DEMO';
+      initLocalBroadcastChannel(room);
+      updateStatusUI('LOCAL MESH READY', 'bg-blue-500');
+      targetNameLabel.textContent = 'READY (TAB SYNC / GITHUB PAGES FOR MOBILE)';
+      if (onReady) onReady(room);
+    }
+
+    function setupDataConnection(conn) {
+      state.conn = conn;
+
+      conn.on('open', () => {
+        state.isConnected = true;
+        updateStatusUI('CONNECTED TO PEER', 'bg-green-500');
+        targetNameLabel.textContent = `TRACKING: PEER (${conn.peer.substring(0, 8)})`;
+        broadcastLocation();
+      });
+
+      conn.on('data', (data) => {
+        handleIncomingPeerData(data);
+      });
+
+      conn.on('close', () => {
+        state.isConnected = false;
+        updateStatusUI('PEER DISCONNECTED', 'bg-red-500');
+        targetNameLabel.textContent = 'TRACKING: PEER DISCONNECTED';
+      });
+
+      conn.on('error', (err) => {
+        console.error('DataChannel error:', err);
+        state.isConnected = false;
+        updateStatusUI('CONN ERROR', 'bg-red-500');
+      });
+    }
+
+    function handleIncomingPeerData(data) {
+      if (!data) return;
+      if (data.type === 'telemetry') {
+        state.peerLat = data.lat;
+        state.peerLon = data.lon;
+        state.peerHeading = data.heading;
+        state.peerLastSeen = Date.now();
+
+        // Update HUD
+        document.getElementById('telPeerLat').textContent = data.lat != null ? data.lat.toFixed(5) : '--';
+        document.getElementById('telPeerLon').textContent = data.lon != null ? data.lon.toFixed(5) : '--';
+      }
+    }
+
+    function broadcastLocation() {
+      const payload = {
+        type: 'telemetry',
+        lat: state.myLat,
+        lon: state.myLon,
+        heading: state.deviceHeading,
+        time: Date.now()
+      };
+
+      // 1. Send via active WebRTC DataChannel (GitHub Pages / real internet)
+      if (state.conn && state.isConnected) {
+        try {
+          state.conn.send(payload);
+        } catch (err) {
+          console.error('Failed to send packet:', err);
+        }
+      }
+
+      // 2. Send via local BroadcastChannel (allows multi-tab testing in Canvas)
+      if (state.bc) {
+        try {
+          state.bc.postMessage(payload);
+        } catch (e){}
+      }
+    }
+
+    function updateStatusUI(text, lightClass) {
+      connStatusText.textContent = text;
+      connLight.className = `w-2.5 h-2.5 rounded-full ${lightClass}`;
+    }
+
+
+    function createHostRoom() {
+      state.isHost = true;
+      const code = generateRoomCode(6);
+      state.roomCode = code;
+      const customPeerId = `MC-COMPASS-${code}`;
+
+      // Initialize local broadcast channel simultaneously for tab-to-tab support
+      initLocalBroadcastChannel(code);
+
+      initPeer(customPeerId, () => {
+        roomCodeDisplay.textContent = `ROOM: ${code}`;
+        hostCodeValue.textContent = code;
+        if (!state.isLocalFallback) {
+          updateStatusUI('WAITING FOR PEER...', 'bg-amber-400 animate-pulse');
+        }
+
+        // Generate full joining URL
+        const joinUrl = new URL(window.location.href);
+        joinUrl.searchParams.set('room', code);
+
+        // Render QR Code
+        qrcodeBox.innerHTML = '';
+        new QRCode(qrcodeBox, {
+          text: joinUrl.toString(),
+          width: 140,
+          height: 140,
+          colorDark: "#1a1815",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      });
+    }
+
+    function joinHostRoom(code) {
+      if (!code) return;
+      code = code.trim().toUpperCase();
+      state.isHost = false;
+      state.roomCode = code;
+      const targetPeerId = `MC-COMPASS-${code}`;
+
+      // Initialize local broadcast channel
+      initLocalBroadcastChannel(code);
+
+      initPeer(null, () => {
+        roomCodeDisplay.textContent = `ROOM: ${code}`;
+        updateStatusUI('CONNECTING...', 'bg-yellow-400 animate-pulse');
+        try {
+          const connection = state.peer.connect(targetPeerId, {
+            reliable: true
+          });
+          setupDataConnection(connection);
+        } catch (err) {
+          console.warn('P2P connect fallback:', err);
+        }
+      });
+    }
+
+    // Global guard against uncaught WebSocket SecurityErrors thrown by third-party scripts
+    window.addEventListener('error', (event) => {
+      if (event.message && event.message.includes('SecurityError')) {
+        event.preventDefault(); // Prevent noisy uncaught console error
+        fallbackToLocalMode();
+      }
+    });
+
+    // Orientation Support for iOS & Android
+    async function requestDeviceOrientation() {
+      const sourceLabel = document.getElementById('telSource');
+
+      // iOS 13+ requires explicit user permission request via gesture
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permission = await DeviceOrientationEvent.requestPermission();
+          if (permission === 'granted') {
+            bindOrientationListeners();
+            state.motionPermitted = true;
+            document.getElementById('btnRequestOrientation').classList.add('opacity-50');
+            document.getElementById('btnRequestOrientation').textContent = '🧭 COMPASS ACTIVE';
+          } else {
+            alert('Motion sensor permission was denied.');
+          }
+        } catch (e) {
+          console.error('Orientation permission error:', e);
+        }
+      } else {
+        // Standard Android / Chrome
+        bindOrientationListeners();
+        state.motionPermitted = true;
+        document.getElementById('btnRequestOrientation').classList.add('opacity-50');
+        document.getElementById('btnRequestOrientation').textContent = '🧭 COMPASS ACTIVE';
+      }
+    }
+
+    function bindOrientationListeners() {
+      const sourceLabel = document.getElementById('telSource');
+
+      // 1. Android Chrome absolute orientation event
+      window.addEventListener('deviceorientationabsolute', (e) => {
+        if (e.alpha !== null) {
+          sourceLabel.textContent = 'Absolute (Compass)';
+          // In deviceorientationabsolute, alpha is 0 at North, 90 at West, 270 at East.
+          // Standard compass heading needs 360 - alpha:
+          state.deviceHeading = (360 - e.alpha) % 360;
+        }
+      }, true);
+
+      // 2. iOS Safari webkitCompassHeading or fallback
+      window.addEventListener('deviceorientation', (e) => {
+        if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+          // iOS provides direct 0-360 true magnetic compass heading
+          sourceLabel.textContent = 'iOS WebKit Compass';
+          state.deviceHeading = e.webkitCompassHeading;
+        } else if (e.alpha !== null && sourceLabel.textContent === 'None') {
+          sourceLabel.textContent = 'Relative Gyro';
+          state.deviceHeading = (360 - e.alpha) % 360;
+        }
+      }, true);
+    }
+
+    // Geolocation Support
+    function requestGeolocation() {
+      if (!('geolocation' in navigator)) {
+        alert('Geolocation is not supported by your browser.');
+        return;
+      }
+
+      navigator.geolocation.watchPosition(
+        (pos) => {
+          state.myLat = pos.coords.latitude;
+          state.myLon = pos.coords.longitude;
+          state.myAccuracy = pos.coords.accuracy;
+          state.gpsPermitted = true;
+
+          // Update HUD
+          document.getElementById('telMyLat').textContent = state.myLat.toFixed(5);
+          document.getElementById('telMyLon').textContent = state.myLon.toFixed(5);
+          document.getElementById('telAcc').textContent = `±${Math.round(state.myAccuracy)}m`;
+
+          document.getElementById('btnRequestGps').classList.add('opacity-50');
+          document.getElementById('btnRequestGps').textContent = '📍 GPS ACTIVE';
+
+          broadcastLocation();
+        },
+        (err) => {
+          console.warn('Geolocation watch error:', err.message);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 1000,
+          timeout: 10000
+        }
+      );
+    }
+
+
+    let lastTimestamp = performance.now();
+
+    function updateCompassPhysics(dt) {
+      let targetBearing = 0;
+      let currentHeading = 0;
+
+      if (state.simulating) {
+        // Use simulation sliders
+        targetBearing = state.simBearing;
+        currentHeading = state.simHeading;
+        state.distanceMeters = state.simDistance;
+      } else {
+        // Real Peer GPS Data
+        currentHeading = state.deviceHeading;
+        if (state.peerLat !== null && state.peerLon !== null && state.myLat !== null && state.myLon !== null) {
+          targetBearing = calculateBearing(state.myLat, state.myLon, state.peerLat, state.peerLon);
+          state.distanceMeters = calculateHaversineDistance(state.myLat, state.myLon, state.peerLat, state.peerLon);
+        } else {
+          // If no peer connected yet, default needle points North (0 bearing)
+          targetBearing = 0;
+          state.distanceMeters = null;
+        }
+      }
+
+      state.targetBearing = targetBearing;
+
+      // Calculate relative needle angle on device screen
+      let rawRelativeAngle;
+      if (state.invertRotation) {
+        rawRelativeAngle = (currentHeading - targetBearing + state.textureOffset) % 360;
+      } else {
+        rawRelativeAngle = (targetBearing - currentHeading + state.textureOffset) % 360;
+      }
+      rawRelativeAngle = (rawRelativeAngle + 360) % 360;
+      state.relativeAngle = rawRelativeAngle;
+
+      // Authentic Minecraft Spring Wobble Physics
+      if (state.enableSpringPhysics) {
+        // Spring Constants
+        const springK = 38.0;
+        const damping = 7.5;
+
+        // Angular error in range [-180, 180]
+        const angleDiff = angleDifference(state.needleDisplayAngle, rawRelativeAngle);
+
+        // Add subtle random Minecraft needle quiver when close or moving
+        const randomQuiver = (Math.random() - 0.5) * 1.5;
+
+        const springForce = (angleDiff * springK) + randomQuiver;
+        const dampingForce = -state.needleVelocity * damping;
+        const totalAcceleration = springForce + dampingForce;
+
+        state.needleVelocity += totalAcceleration * dt;
+        state.needleDisplayAngle = (state.needleDisplayAngle + state.needleVelocity * dt + 360) % 360;
+      } else {
+        state.needleDisplayAngle = rawRelativeAngle;
+      }
+    }
+
+    function renderLoop(now) {
+      const dt = Math.min((now - lastTimestamp) / 1000, 0.1);
+      lastTimestamp = now;
+
+      // Physics update
+      updateCompassPhysics(dt);
+
+      // Quantize to 32 discrete Minecraft needle orientations for authenticity
+      const FRAME_COUNT = 32;
+      const step = 360.0 / FRAME_COUNT;
+      const quantizedAngle = Math.round(state.needleDisplayAngle / step) * step;
+
+      // Draw compass
+      compassRenderer.draw(ctx, quantizedAngle);
+
+      // Update text indicators
+      needleDegText.textContent = `${Math.round(state.needleDisplayAngle)}°`;
+      cardinalText.textContent = getCardinal(state.deviceHeading);
+      bearingText.textContent = `${Math.round(state.targetBearing)}°`;
+      headingText.textContent = `${Math.round(state.deviceHeading)}°`;
+
+      if (state.distanceMeters !== null) {
+        const blocks = Math.round(state.distanceMeters);
+        if (blocks < 1000) {
+          distanceMainLabel.innerHTML = `<span>${blocks}</span> <span class="text-xs text-stone-400">blocks (${blocks}m)</span>`;
+        } else {
+          const km = (state.distanceMeters / 1000).toFixed(2);
+          distanceMainLabel.innerHTML = `<span>${km}</span> <span class="text-xs text-stone-400">km (${blocks} blocks)</span>`;
+        }
+      } else if (!state.isConnected) {
+        distanceMainLabel.innerHTML = `<span class="text-stone-500 text-xs">AWAITING PEER LOCATION...</span>`;
+      }
+
+      requestAnimationFrame(renderLoop);
+    }
+
+
+    // Tab Drawer Switching Logic
+    const tabs = {
+      connect: { btn: document.getElementById('tabConnectBtn'), panel: panelConnect },
+      telemetry: { btn: document.getElementById('tabTelemetryBtn'), panel: panelTelemetry },
+      sim: { btn: document.getElementById('tabSimBtn'), panel: panelSim }
+    };
+
+    function toggleTab(activeKey) {
+      Object.entries(tabs).forEach(([key, { btn, panel }]) => {
+        if (key === activeKey) {
+          const isClosed = panel.classList.contains('hidden');
+          if (isClosed) {
+            panel.classList.remove('hidden');
+            btn.classList.add('mc-btn-green');
+          } else {
+            panel.classList.add('hidden');
+            btn.classList.remove('mc-btn-green');
+          }
+        } else {
+          panel.classList.add('hidden');
+          btn.classList.remove('mc-btn-green');
+        }
+      });
+    }
+
+    document.getElementById('tabConnectBtn').addEventListener('click', () => toggleTab('connect'));
+    document.getElementById('tabTelemetryBtn').addEventListener('click', () => toggleTab('telemetry'));
+    document.getElementById('tabSimBtn').addEventListener('click', () => toggleTab('sim'));
+
+    document.getElementById('closeConnectPanel').addEventListener('click', () => panelConnect.classList.add('hidden'));
+    document.getElementById('closeTelemetryPanel').addEventListener('click', () => panelTelemetry.classList.add('hidden'));
+    document.getElementById('closeSimPanel').addEventListener('click', () => panelSim.classList.add('hidden'));
+
+    // Host / Join Button Views
+    const btnModeHost = document.getElementById('btnModeHost');
+    const btnModeJoin = document.getElementById('btnModeJoin');
+
+    btnModeHost.addEventListener('click', () => {
+      hostSection.classList.remove('hidden');
+      joinSection.classList.add('hidden');
+      btnModeHost.classList.add('mc-btn-green');
+      btnModeJoin.classList.remove('mc-btn-green');
+      if (!state.roomCode) {
+        createHostRoom();
+      }
+    });
+
+    btnModeJoin.addEventListener('click', () => {
+      joinSection.classList.remove('hidden');
+      hostSection.classList.add('hidden');
+      btnModeJoin.classList.add('mc-btn-green');
+      btnModeHost.classList.remove('mc-btn-green');
+    });
+
+    document.getElementById('btnSubmitJoin').addEventListener('click', () => {
+      const code = document.getElementById('inputRoomCode').value;
+      if (code) {
+        joinHostRoom(code);
+      }
+    });
+
+    // Copy Invite URL
+    document.getElementById('btnCopyInvite').addEventListener('click', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', state.roomCode);
+      
+      const dummy = document.createElement("input");
+      document.body.appendChild(dummy);
+      dummy.value = url.toString();
+      dummy.select();
+      document.execCommand("copy");
+      document.body.removeChild(dummy);
+
+      copyFeedback.classList.remove('hidden');
+      setTimeout(() => copyFeedback.classList.add('hidden'), 2500);
+    });
+
+    // Mobile Sensor Grant Buttons
+    document.getElementById('btnRequestOrientation').addEventListener('click', () => {
+      requestDeviceOrientation();
+    });
+    document.getElementById('btnRequestGps').addEventListener('click', () => {
+      requestGeolocation();
+    });
+
+    // Calibration & Offset Controls
+    const sliderOffset = document.getElementById('sliderOffset');
+    const offsetValText = document.getElementById('offsetValText');
+    sliderOffset.addEventListener('input', (e) => {
+      state.textureOffset = parseFloat(e.target.value);
+      offsetValText.textContent = `${state.textureOffset}°`;
+    });
+
+    document.getElementById('btnFlip180').addEventListener('click', () => {
+      state.textureOffset = (state.textureOffset + 180) % 360;
+      sliderOffset.value = state.textureOffset;
+      offsetValText.textContent = `${state.textureOffset}°`;
+    });
+
+    document.getElementById('checkInvertRot').addEventListener('change', (e) => {
+      state.invertRotation = e.target.checked;
+    });
+
+    document.getElementById('checkNeedleJitter').addEventListener('change', (e) => {
+      state.enableSpringPhysics = e.target.checked;
+    });
+
+    // Simulation Sliders
+    const simHeadingSlider = document.getElementById('simHeadingSlider');
+    const simBearingSlider = document.getElementById('simBearingSlider');
+    const simDistSlider = document.getElementById('simDistSlider');
+    const btnToggleSimMode = document.getElementById('btnToggleSimMode');
+
+    simHeadingSlider.addEventListener('input', (e) => {
+      state.simHeading = parseFloat(e.target.value);
+      document.getElementById('simHeadingVal').textContent = `${state.simHeading}°`;
+    });
+
+    simBearingSlider.addEventListener('input', (e) => {
+      state.simBearing = parseFloat(e.target.value);
+      document.getElementById('simBearingVal').textContent = `${state.simBearing}° (${getCardinal(state.simBearing)})`;
+    });
+
+    simDistSlider.addEventListener('input', (e) => {
+      state.simDistance = parseFloat(e.target.value);
+      document.getElementById('simDistVal').textContent = `${state.simDistance} blocks`;
+    });
+
+    btnToggleSimMode.addEventListener('click', () => {
+      state.simulating = !state.simulating;
+      if (state.simulating) {
+        btnToggleSimMode.textContent = 'DISABLE SIMULATION (USE SENSORS)';
+        btnToggleSimMode.classList.remove('mc-btn-green');
+        btnToggleSimMode.classList.add('bg-amber-700');
+        targetNameLabel.textContent = 'TRACKING: SIMULATED PLAYER';
+      } else {
+        btnToggleSimMode.textContent = 'ENABLE SIMULATION OVERRIDE';
+        btnToggleSimMode.classList.add('mc-btn-green');
+        btnToggleSimMode.classList.remove('bg-amber-700');
+        targetNameLabel.textContent = state.isConnected ? 'TRACKING: PEER' : 'TRACKING: WAITING FOR PEER';
+      }
+    });
+
+    // Help Modal
+    const helpModal = document.getElementById('helpModal');
+    document.getElementById('helpModalBtn').addEventListener('click', () => helpModal.classList.remove('hidden'));
+    document.getElementById('closeHelpModal').addEventListener('click', () => helpModal.classList.add('hidden'));
+    document.getElementById('btnCloseHelpModalBtn').addEventListener('click', () => helpModal.classList.add('hidden'));
+
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // Periodic Telemetry Sync over WebRTC
+      setInterval(() => {
+        if (state.isConnected) {
+          broadcastLocation();
+        }
+      }, 500);
+
+      // Check if opened via room invite link (?room=CODE)
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room');
+
+      if (roomParam) {
+        // Auto-join room specified in URL
+        document.getElementById('inputRoomCode').value = roomParam.toUpperCase();
+        toggleTab('connect');
+        btnModeJoin.click();
+        joinHostRoom(roomParam);
+      } else {
+        // Default to hosting view
+        createHostRoom();
+      }
+
+      // Start Animation Loop
+      requestAnimationFrame(renderLoop);
+    });
+  </script>
+</body>
+</html>
