@@ -300,34 +300,67 @@
       </div>
     </div>
 
-    <!-- PANEL 3: Simulator (For testing without 2 phones) -->
-    <div id="panelSim" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2">
+    <!-- PANEL 3: Simulator (Virtual Peer Location with Live Phone Sensors) -->
+    <div id="panelSim" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2.5">
       <div class="flex items-center justify-between border-b border-stone-800 pb-1">
-        <span class="mc-font text-[9px] text-yellow-400 uppercase">Offline Test Simulator</span>
+        <span class="mc-font text-[9px] text-yellow-400 uppercase">Virtual Peer Simulator</span>
         <button id="closeSimPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
       </div>
-      <p class="text-[10px] text-stone-400">Drag sliders to test needle pointing without requiring two moving phones:</p>
+      
+      <p class="text-[10px] text-stone-300 leading-tight">
+        Spawns a virtual peer so you can test using your phone's <strong class="text-emerald-400">real compass & GPS</strong> without needing a second phone.
+      </p>
 
-      <div class="flex flex-col gap-1.5 text-[10px]">
+      <!-- Toggle Spawn Button -->
+      <button id="btnToggleSimMode" class="mc-btn mc-btn-green py-2 text-[10px] font-bold tracking-wider">
+        🎯 SPAWN VIRTUAL PEER
+      </button>
+
+      <!-- Quick Preset Buttons -->
+      <div class="flex flex-col gap-1">
+        <span class="text-[10px] text-stone-400 font-mono">Quick Spawn Presets (Relative to you):</span>
+        <div class="grid grid-cols-4 gap-1">
+          <button id="btnPresetN" class="mc-btn py-1.5 text-[8px]">50m N</button>
+          <button id="btnPresetE" class="mc-btn py-1.5 text-[8px]">50m E</button>
+          <button id="btnPresetS" class="mc-btn py-1.5 text-[8px]">50m S</button>
+          <button id="btnPresetW" class="mc-btn py-1.5 text-[8px]">50m W</button>
+        </div>
+      </div>
+
+      <!-- Sliders for Custom Virtual Location -->
+      <div class="flex flex-col gap-1.5 text-[10px] pt-1 border-t border-stone-800">
         <div class="flex justify-between">
-          <span>Simulated Phone Heading:</span>
-          <span id="simHeadingVal" class="text-yellow-400 font-mono">0°</span>
+          <span>Peer Bearing from You:</span>
+          <span id="simBearingVal" class="text-cyan-400 font-mono">0° (NORTH)</span>
         </div>
-        <input id="simHeadingSlider" type="range" min="0" max="359" value="0" class="w-full accent-yellow-400">
+        <input id="simBearingSlider" type="range" min="0" max="359" value="0" class="w-full accent-cyan-400 cursor-pointer">
 
         <div class="flex justify-between mt-1">
-          <span>Simulated Target Direction:</span>
-          <span id="simBearingVal" class="text-cyan-400 font-mono">90° (East)</span>
+          <span>Peer Distance:</span>
+          <span id="simDistVal" class="text-green-400 font-mono">50 blocks (50m)</span>
         </div>
-        <input id="simBearingSlider" type="range" min="0" max="359" value="90" class="w-full accent-cyan-400">
+        <input id="simDistSlider" type="range" min="5" max="500" value="50" class="w-full accent-green-400 cursor-pointer">
 
-        <div class="flex justify-between mt-1">
-          <span>Simulated Distance (Blocks):</span>
-          <span id="simDistVal" class="text-green-400 font-mono">64 blocks</span>
+        <!-- Anchored GPS & Desktop Overrides -->
+        <label class="flex items-center gap-2 text-[10px] text-stone-300 cursor-pointer mt-1">
+          <input type="checkbox" id="checkAnchorGps" checked class="accent-yellow-400">
+          <span>Anchor peer to fixed GPS coords (walk around it)</span>
+        </label>
+
+        <!-- Optional Desktop Heading Fallback -->
+        <div class="mt-2 pt-2 border-t border-stone-800 flex flex-col gap-1">
+          <label class="flex items-center gap-2 text-[10px] text-stone-400 cursor-pointer">
+            <input type="checkbox" id="checkManualHeading" class="accent-yellow-400">
+            <span>Desktop override: Manual heading slider (ignore motion sensor)</span>
+          </label>
+          <div id="manualHeadingBox" class="hidden flex-col gap-1 mt-1">
+            <div class="flex justify-between text-[9px]">
+              <span>Manual Heading:</span>
+              <span id="simHeadingVal" class="text-yellow-400 font-mono">0°</span>
+            </div>
+            <input id="simHeadingSlider" type="range" min="0" max="359" value="0" class="w-full accent-yellow-400">
+          </div>
         </div>
-        <input id="simDistSlider" type="range" min="1" max="1000" value="64" class="w-full accent-green-400">
-
-        <button id="btnToggleSimMode" class="mc-btn mc-btn-green py-1.5 text-[9px] mt-1">ENABLE SIMULATION OVERRIDE</button>
       </div>
     </div>
   </footer>
@@ -398,11 +431,15 @@
       needleDisplayAngle: 0,
       needleVelocity: 0,
 
-      // Simulation mode
+      // Virtual Peer Simulation mode
       simulating: false,
-      simHeading: 0,
-      simBearing: 90,
-      simDistance: 64
+      simPeerDistance: 50,
+      simPeerBearing: 0,
+      simPeerLat: null,
+      simPeerLon: null,
+      simAnchorToGps: true,
+      simManualHeading: false,
+      simHeading: 0
     };
 
     // DOM Elements
@@ -448,6 +485,26 @@
       const theta = Math.atan2(y, x);
       const bearing = (theta * 180 / Math.PI + 360) % 360;
       return bearing;
+    }
+
+    /**
+     * Projects a target GPS coordinate given a start coordinate, distance in meters, and forward azimuth
+     */
+    function calculateDestinationPoint(lat, lon, distanceMeters, bearingDeg) {
+      if (lat === null || lon === null) return { lat: null, lon: null };
+      const R = 6371000;
+      const d = distanceMeters / R;
+      const brng = (bearingDeg * Math.PI) / 180;
+      const phi1 = (lat * Math.PI) / 180;
+      const lambda1 = (lon * Math.PI) / 180;
+
+      const phi2 = Math.asin(Math.sin(phi1) * Math.cos(d) + Math.cos(phi1) * Math.sin(d) * Math.cos(brng));
+      const lambda2 = lambda1 + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(phi1), Math.cos(d) - Math.sin(phi1) * Math.sin(phi2));
+
+      return {
+        lat: (phi2 * 180) / Math.PI,
+        lon: (lambda2 * 180) / Math.PI
+      };
     }
 
     /**
@@ -985,21 +1042,27 @@
 
     function updateCompassPhysics(dt) {
       let targetBearing = 0;
-      let currentHeading = 0;
+      let currentHeading = state.simManualHeading ? state.simHeading : state.deviceHeading;
 
       if (state.simulating) {
-        // Use simulation sliders
-        targetBearing = state.simBearing;
-        currentHeading = state.simHeading;
-        state.distanceMeters = state.simDistance;
+        // Virtual Peer Mode: Uses real phone orientation & live GPS
+        if (state.simAnchorToGps && state.simPeerLat !== null && state.simPeerLon !== null && state.myLat !== null && state.myLon !== null) {
+          // Calculate bearing & distance from real phone GPS to anchored virtual peer GPS
+          targetBearing = calculateBearing(state.myLat, state.myLon, state.simPeerLat, state.simPeerLon);
+          state.distanceMeters = calculateHaversineDistance(state.myLat, state.myLon, state.simPeerLat, state.simPeerLon);
+        } else {
+          // Fallback if GPS is not yet acquired or anchor unchecked: use relative offset bearing directly
+          targetBearing = state.simPeerBearing;
+          state.distanceMeters = state.simPeerDistance;
+        }
       } else {
         // Real Peer GPS Data
-        currentHeading = state.deviceHeading;
         if (state.peerLat !== null && state.peerLon !== null && state.myLat !== null && state.myLon !== null) {
           targetBearing = calculateBearing(state.myLat, state.myLon, state.peerLat, state.peerLon);
           state.distanceMeters = calculateHaversineDistance(state.myLat, state.myLon, state.peerLat, state.peerLon);
         } else {
-          // If no peer connected yet, default needle points North (0 bearing)
+          // Default: When no peer is connected, target is true North (0° bearing)
+          // Facing North (currentHeading = 0°) results in (0 - 0) = 0° (pointing straight up)
           targetBearing = 0;
           state.distanceMeters = null;
         }
@@ -1070,7 +1133,7 @@
           distanceMainLabel.innerHTML = `<span>${km}</span> <span class="text-xs text-stone-400">km (${blocks} blocks)</span>`;
         }
       } else if (!state.isConnected) {
-        distanceMainLabel.innerHTML = `<span class="text-stone-500 text-xs">AWAITING PEER LOCATION...</span>`;
+        distanceMainLabel.innerHTML = `<span class="text-stone-400 text-xs">POINTING NORTH (IDLE)</span>`;
       }
 
       requestAnimationFrame(renderLoop);
@@ -1205,33 +1268,88 @@
     const simDistSlider = document.getElementById('simDistSlider');
     const btnToggleSimMode = document.getElementById('btnToggleSimMode');
 
+    function refreshVirtualPeerCoordinates() {
+      if (!state.simulating) return;
+
+      // Default baseline location if user GPS is not yet permitted (e.g., Dallas default or 0,0)
+      const baseLat = state.myLat !== null ? state.myLat : 32.9483;
+      const baseLon = state.myLon !== null ? state.myLon : -96.7299;
+
+      const projected = calculateDestinationPoint(baseLat, baseLon, state.simPeerDistance, state.simPeerBearing);
+      state.simPeerLat = projected.lat;
+      state.simPeerLon = projected.lon;
+
+      // Reflect in telemetry HUD
+      document.getElementById('telPeerLat').textContent = state.simPeerLat ? state.simPeerLat.toFixed(5) : '--';
+      document.getElementById('telPeerLon').textContent = state.simPeerLon ? state.simPeerLon.toFixed(5) : '--';
+    }
+
+    simBearingSlider.addEventListener('input', (e) => {
+      state.simPeerBearing = parseFloat(e.target.value);
+      document.getElementById('simBearingVal').textContent = `${state.simPeerBearing}° (${getCardinal(state.simPeerBearing)})`;
+      refreshVirtualPeerCoordinates();
+    });
+
+    simDistSlider.addEventListener('input', (e) => {
+      state.simPeerDistance = parseFloat(e.target.value);
+      document.getElementById('simDistVal').textContent = `${state.simPeerDistance} blocks (${state.simPeerDistance}m)`;
+      refreshVirtualPeerCoordinates();
+    });
+
+    function applyPreset(bearingDeg, dist = 50) {
+      state.simPeerBearing = bearingDeg;
+      state.simPeerDistance = dist;
+      simBearingSlider.value = bearingDeg;
+      simDistSlider.value = dist;
+      document.getElementById('simBearingVal').textContent = `${bearingDeg}° (${getCardinal(bearingDeg)})`;
+      document.getElementById('simDistVal').textContent = `${dist} blocks (${dist}m)`;
+
+      if (!state.simulating) {
+        btnToggleSimMode.click();
+      } else {
+        refreshVirtualPeerCoordinates();
+      }
+    }
+
+    document.getElementById('btnPresetN').addEventListener('click', () => applyPreset(0, 50));
+    document.getElementById('btnPresetE').addEventListener('click', () => applyPreset(90, 50));
+    document.getElementById('btnPresetS').addEventListener('click', () => applyPreset(180, 50));
+    document.getElementById('btnPresetW').addEventListener('click', () => applyPreset(270, 50));
+
+    document.getElementById('checkAnchorGps').addEventListener('change', (e) => {
+      state.simAnchorToGps = e.target.checked;
+      refreshVirtualPeerCoordinates();
+    });
+
+    const checkManualHeading = document.getElementById('checkManualHeading');
+    const manualHeadingBox = document.getElementById('manualHeadingBox');
+    checkManualHeading.addEventListener('change', (e) => {
+      state.simManualHeading = e.target.checked;
+      manualHeadingBox.classList.toggle('hidden', !e.target.checked);
+    });
+
     simHeadingSlider.addEventListener('input', (e) => {
       state.simHeading = parseFloat(e.target.value);
       document.getElementById('simHeadingVal').textContent = `${state.simHeading}°`;
     });
 
-    simBearingSlider.addEventListener('input', (e) => {
-      state.simBearing = parseFloat(e.target.value);
-      document.getElementById('simBearingVal').textContent = `${state.simBearing}° (${getCardinal(state.simBearing)})`;
-    });
-
-    simDistSlider.addEventListener('input', (e) => {
-      state.simDistance = parseFloat(e.target.value);
-      document.getElementById('simDistVal').textContent = `${state.simDistance} blocks`;
-    });
-
     btnToggleSimMode.addEventListener('click', () => {
       state.simulating = !state.simulating;
       if (state.simulating) {
-        btnToggleSimMode.textContent = 'DISABLE SIMULATION (USE SENSORS)';
+        btnToggleSimMode.textContent = '❌ STOP VIRTUAL PEER';
         btnToggleSimMode.classList.remove('mc-btn-green');
-        btnToggleSimMode.classList.add('bg-amber-700');
-        targetNameLabel.textContent = 'TRACKING: SIMULATED PLAYER';
+        btnToggleSimMode.classList.add('bg-red-800');
+        targetNameLabel.textContent = 'TRACKING: VIRTUAL PEER';
+        refreshVirtualPeerCoordinates();
+        updateStatusUI('SIMULATING VIRTUAL PEER', 'bg-blue-500');
       } else {
-        btnToggleSimMode.textContent = 'ENABLE SIMULATION OVERRIDE';
+        btnToggleSimMode.textContent = '🎯 SPAWN VIRTUAL PEER';
         btnToggleSimMode.classList.add('mc-btn-green');
-        btnToggleSimMode.classList.remove('bg-amber-700');
+        btnToggleSimMode.classList.remove('bg-red-800');
         targetNameLabel.textContent = state.isConnected ? 'TRACKING: PEER' : 'TRACKING: WAITING FOR PEER';
+        updateStatusUI(state.isConnected ? 'CONNECTED TO PEER' : 'DISCONNECTED', state.isConnected ? 'bg-green-500' : 'bg-yellow-500');
+        state.simPeerLat = null;
+        state.simPeerLon = null;
       }
     });
 
