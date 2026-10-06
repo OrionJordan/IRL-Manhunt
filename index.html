@@ -162,6 +162,18 @@
       </div>
       <div id="roomCodeDisplay" class="mc-font text-[9px] text-yellow-300 tracking-wider">ROOM: ----</div>
     </div>
+
+    <!-- Role Selection Bar -->
+    <div id="roleSelectorBar" class="w-full py-1.5 px-2 bg-stone-900/90 border-2 border-stone-700 flex items-center justify-between rounded-sm">
+      <div class="flex items-center gap-1.5">
+        <span class="mc-font text-[8px] text-stone-400">ROLE:</span>
+        <span id="roleIndicatorText" class="mc-font text-[9px] text-emerald-400 font-bold">SEEKER</span>
+      </div>
+      <div class="flex gap-1">
+        <button id="btnRoleSeeker" class="mc-btn mc-btn-green px-2 py-1 text-[8px]">🎯 SEEKER</button>
+        <button id="btnRoleHider" class="mc-btn px-2 py-1 text-[8px]">🏃 HIDER</button>
+      </div>
+    </div>
   </header>
 
   <main class="w-full max-w-md flex flex-col items-center justify-center flex-grow my-1">
@@ -375,8 +387,9 @@
       <ol class="text-xs space-y-2 list-decimal list-inside text-stone-300">
         <li><strong>Open on Phone 1:</strong> Tap <em>Create Room</em> to generate a code or QR code.</li>
         <li><strong>Open on Phone 2:</strong> Scan the QR code or enter the 6-letter room code.</li>
+        <li><strong>Pick Your Roles:</strong> Tap <em>SEEKER</em> or <em>HIDER</em>. Choosing Seeker automatically sets your peer to Hider!</li>
         <li><strong>Grant Permissions:</strong> Tap <em>Enable Compass</em> and <em>Enable GPS</em> on both phones.</li>
-        <li><strong>Hold phones flat:</strong> The needle will wobble and point directly toward the location of the other phone in real time!</li>
+        <li><strong>Hold phones flat:</strong> The needle will wobble and point directly toward the other player. Within 25 ft, the compass enters Nether spin: the Seeker sees <strong>SEEK</strong> and the Hider sees <strong>HIDE</strong>!</li>
       </ol>
       <div class="bg-black/50 p-2 text-[10px] text-stone-400 border border-stone-800">
         💡 <strong>Tip:</strong> If your compass points backwards on your particular Android or iPhone model, tap <em>Telemetry</em> and click <strong>+180° Flip</strong>.
@@ -402,6 +415,10 @@
       isConnected: false,
       bc: null, // BroadcastChannel fallback for sandboxed/multi-tab environments
       isLocalFallback: false,
+
+      // Manhunt Roles: 'seeker' or 'hider'
+      myRole: 'seeker',
+      peerRole: 'hider',
 
       // Local Sensors
       myLat: null,
@@ -820,8 +837,9 @@
       conn.on('open', () => {
         state.isConnected = true;
         updateStatusUI('CONNECTED TO PEER', 'bg-green-500');
-        targetNameLabel.textContent = `TRACKING: PEER (${conn.peer.substring(0, 8)})`;
+        updateTargetHudRole();
         broadcastLocation();
+        broadcastRole(state.myRole);
       });
 
       conn.on('data', (data) => {
@@ -841,13 +859,84 @@
       });
     }
 
+    function updateTargetHudRole() {
+      if (state.simulating) {
+        targetNameLabel.textContent = state.myRole === 'seeker' ? 'TRACKING: VIRTUAL HIDER' : 'EVADING: VIRTUAL SEEKER';
+        return;
+      }
+      if (!state.isConnected) {
+        targetNameLabel.textContent = 'TRACKING: WAITING FOR PEER';
+        return;
+      }
+      const peerRoleName = state.myRole === 'seeker' ? 'HIDER' : 'SEEKER';
+      targetNameLabel.textContent = state.myRole === 'seeker' ? `TRACKING: ${peerRoleName}` : `EVADING: ${peerRoleName}`;
+    }
+
+    function setMyRole(newRole, sendBroadcast = true) {
+      state.myRole = newRole;
+      state.peerRole = newRole === 'seeker' ? 'hider' : 'seeker';
+
+      const btnSeeker = document.getElementById('btnRoleSeeker');
+      const btnHider = document.getElementById('btnRoleHider');
+      const roleText = document.getElementById('roleIndicatorText');
+
+      if (newRole === 'seeker') {
+        btnSeeker.classList.add('mc-btn-green');
+        btnHider.classList.remove('mc-btn-green');
+        roleText.textContent = 'SEEKER';
+        roleText.className = 'mc-font text-[9px] text-emerald-400 font-bold';
+      } else {
+        btnHider.classList.add('mc-btn-green');
+        btnSeeker.classList.remove('mc-btn-green');
+        roleText.textContent = 'HIDER';
+        roleText.className = 'mc-font text-[9px] text-amber-400 font-bold';
+      }
+
+      updateTargetHudRole();
+
+      if (sendBroadcast) {
+        broadcastRole(newRole);
+      }
+    }
+
+    function broadcastRole(role) {
+      const payload = {
+        type: 'role_sync',
+        role: role
+      };
+      if (state.conn && state.isConnected) {
+        try { state.conn.send(payload); } catch(e){}
+      }
+      if (state.bc) {
+        try { state.bc.postMessage(payload); } catch(e){}
+      }
+    }
+
     function handleIncomingPeerData(data) {
       if (!data) return;
+
+      // Remote player picked their role; adapt our role reciprocally
+      if (data.type === 'role_sync' && data.role) {
+        state.peerRole = data.role;
+        const reciprocalRole = data.role === 'seeker' ? 'hider' : 'seeker';
+        if (state.myRole !== reciprocalRole) {
+          setMyRole(reciprocalRole, false);
+        }
+        return;
+      }
+
       if (data.type === 'telemetry') {
         state.peerLat = data.lat;
         state.peerLon = data.lon;
         state.peerHeading = data.heading;
         state.peerLastSeen = Date.now();
+        if (data.role && data.role !== state.peerRole) {
+          state.peerRole = data.role;
+          const reciprocalRole = data.role === 'seeker' ? 'hider' : 'seeker';
+          if (state.myRole !== reciprocalRole) {
+            setMyRole(reciprocalRole, false);
+          }
+        }
 
         // Update HUD
         document.getElementById('telPeerLat').textContent = data.lat != null ? data.lat.toFixed(5) : '--';
@@ -861,6 +950,7 @@
         lat: state.myLat,
         lon: state.myLon,
         heading: state.deviceHeading,
+        role: state.myRole,
         time: Date.now()
       };
 
@@ -1155,8 +1245,13 @@
         let tierClass = '';
 
         if (feet < 25) {
-          tierText = '☠ HIDE ☠';
-          tierClass = 'text-red-500 animate-pulse text-base tracking-widest drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]';
+          if (state.myRole === 'seeker') {
+            tierText = '🎯 SEEK 🎯';
+            tierClass = 'text-emerald-400 animate-pulse text-base tracking-widest drop-shadow-[0_0_8px_rgba(52,211,153,0.9)]';
+          } else {
+            tierText = '☠ HIDE ☠';
+            tierClass = 'text-red-500 animate-pulse text-base tracking-widest drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]';
+          }
         } else if (feet <= 500) {
           tierText = 'Close';
           tierClass = 'text-amber-400 text-sm';
@@ -1268,6 +1363,14 @@
       requestGeolocation();
     });
 
+    // Role Selection Buttons
+    document.getElementById('btnRoleSeeker').addEventListener('click', () => {
+      setMyRole('seeker', true);
+    });
+    document.getElementById('btnRoleHider').addEventListener('click', () => {
+      setMyRole('hider', true);
+    });
+
     // Calibration & Offset Controls
     const sliderOffset = document.getElementById('sliderOffset');
     const offsetValText = document.getElementById('offsetValText');
@@ -1337,12 +1440,19 @@
       state.simPeerDistance = parseFloat(e.target.value);
       const feet = Math.round(state.simPeerDistance * 3.28084);
       let tierLabel = '';
-      if (feet < 25) tierLabel = '(HIDE - Nether Spin)';
-      else if (feet <= 500) tierLabel = '(Close)';
-      else if (feet <= 1000) tierLabel = '(Closing in)';
-      else if (feet <= 2500) tierLabel = '(Moderate)';
-      else if (feet <= 5000) tierLabel = '(Far)';
-      else tierLabel = '(Very Far)';
+      if (feet < 25) {
+        tierLabel = state.myRole === 'seeker' ? '(SEEK - Nether Spin)' : '(HIDE - Nether Spin)';
+      } else if (feet <= 500) {
+        tierLabel = '(Close)';
+      } else if (feet <= 1000) {
+        tierLabel = '(Closing in)';
+      } else if (feet <= 2500) {
+        tierLabel = '(Moderate)';
+      } else if (feet <= 5000) {
+        tierLabel = '(Far)';
+      } else {
+        tierLabel = '(Very Far)';
+      }
 
       document.getElementById('simDistVal').textContent = `${feet} ft ${tierLabel}`;
       refreshVirtualPeerCoordinates();
@@ -1393,14 +1503,14 @@
         btnToggleSimMode.textContent = '❌ STOP VIRTUAL PEER';
         btnToggleSimMode.classList.remove('mc-btn-green');
         btnToggleSimMode.classList.add('bg-red-800');
-        targetNameLabel.textContent = 'TRACKING: VIRTUAL PEER';
+        updateTargetHudRole();
         refreshVirtualPeerCoordinates();
         updateStatusUI('SIMULATING VIRTUAL PEER', 'bg-blue-500');
       } else {
         btnToggleSimMode.textContent = '🎯 SPAWN VIRTUAL PEER';
         btnToggleSimMode.classList.add('mc-btn-green');
         btnToggleSimMode.classList.remove('bg-red-800');
-        targetNameLabel.textContent = state.isConnected ? 'TRACKING: PEER' : 'TRACKING: WAITING FOR PEER';
+        updateTargetHudRole();
         updateStatusUI(state.isConnected ? 'CONNECTED TO PEER' : 'DISCONNECTED', state.isConnected ? 'bg-green-500' : 'bg-yellow-500');
         state.simPeerLat = null;
         state.simPeerLon = null;
