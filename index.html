@@ -285,6 +285,18 @@
           <input type="checkbox" id="checkNeedleJitter" checked class="accent-yellow-400">
           <span>Minecraft Needle Spring & Jitter Physics</span>
         </label>
+
+        <!-- Custom Sprite Sheet Loader -->
+        <div class="mt-2 pt-2 border-t border-stone-800 flex flex-col gap-1">
+          <div class="flex justify-between items-center text-[10px]">
+            <span>Sprite Source:</span>
+            <span id="spriteStatusText" class="text-amber-400 font-mono">Loading 'compass.png'...</span>
+          </div>
+          <label class="mc-btn py-1 px-2 text-[8px] text-center cursor-pointer block">
+            📁 CHOOSE DIFFERENT SPRITE PNG
+            <input type="file" id="inputSpriteFile" accept="image/png,image/*" class="hidden">
+          </label>
+        </div>
       </div>
     </div>
 
@@ -474,10 +486,9 @@
       return dirs[index];
     }
 
-
     /**
-     * Procedural Minecraft-style 16x16 compass renderer with 32 rotational positions
-     * Generates genuine Minecraft dial textures onto an off-screen surface
+     * Minecraft Compass Renderer with 'compass.png' sprite-sheet support
+     * Automatically extracts vertical animation strip frames with procedural fallback
      */
     class MinecraftCompassRenderer {
       constructor() {
@@ -485,17 +496,83 @@
         this.frameCanvas.width = 16;
         this.frameCanvas.height = 16;
         this.fCtx = this.frameCanvas.getContext('2d');
+
+        this.spriteLoaded = false;
+        this.spriteImg = new Image();
+        this.frameCount = 32;
+        this.frameW = 16;
+        this.frameH = 16;
+
+        // Automatically pull from 'compass.png'
+        this.loadSprite('compass.png');
       }
 
       /**
-       * Renders the authentic Minecraft 16x16 compass dial into the main 256x256 display canvas
-       * @param {number} angleDegrees - Compass needle angle where 0 points up (Target straight ahead)
+       * Loads a sprite sheet image and calculates frame geometry
+       */
+      loadSprite(src) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          this.spriteImg = img;
+          this.spriteLoaded = true;
+          this.frameW = img.naturalWidth;
+          // Standard Minecraft compass texture sheets are vertical strips with square frames
+          this.frameCount = Math.max(1, Math.round(img.naturalHeight / img.naturalWidth));
+          this.frameH = img.naturalHeight / this.frameCount;
+
+          console.log(`[Compass] Loaded ${src}: ${img.naturalWidth}x${img.naturalHeight} (${this.frameCount} frames of ${this.frameW}x${this.frameH})`);
+          const statusElem = document.getElementById('spriteStatusText');
+          if (statusElem) {
+            statusElem.textContent = `'compass.png' (${this.frameCount} frames)`;
+            statusElem.className = 'text-green-400 font-mono';
+          }
+        };
+        img.onerror = () => {
+          this.spriteLoaded = false;
+          console.warn(`[Compass] Could not load '${src}'. Using procedural pixel-art fallback.`);
+          const statusElem = document.getElementById('spriteStatusText');
+          if (statusElem) {
+            statusElem.textContent = `'${src}' not found (Using procedural fallback)`;
+            statusElem.className = 'text-amber-400 font-mono';
+          }
+        };
+        img.src = src;
+      }
+
+      /**
+       * Renders the compass needle frame onto the main 256x256 display canvas
+       * @param {CanvasRenderingContext2D} destCtx
+       * @param {number} angleDegrees - Compass needle angle where 0 points up
        */
       draw(destCtx, angleDegrees) {
+        destCtx.imageSmoothingEnabled = false;
+
+        // 1. Draw from loaded compass.png sprite sheet if available
+        if (this.spriteLoaded && this.spriteImg.complete && this.frameCount > 0) {
+          const normAngle = ((angleDegrees % 360) + 360) % 360;
+          const frameIndex = Math.floor(normAngle / (360.0 / this.frameCount)) % this.frameCount;
+
+          destCtx.clearRect(0, 0, destCtx.canvas.width, destCtx.canvas.height);
+          destCtx.drawImage(
+            this.spriteImg,
+            0,
+            frameIndex * this.frameH,
+            this.frameW,
+            this.frameH,
+            0,
+            0,
+            destCtx.canvas.width,
+            destCtx.canvas.height
+          );
+          return;
+        }
+
+        // 2. Fallback procedural renderer if compass.png is missing or loading
         const fc = this.fCtx;
         fc.clearRect(0, 0, 16, 16);
 
-        // 1. Compass Brass Outer Bezel / Rim (Iconic Minecraft Compass Palette)
+        // Compass Brass Outer Bezel
         const C_BORDER_DARK  = '#1e1b18';
         const C_BEZEL_DARK   = '#423c31';
         const C_BEZEL_MID    = '#6b5c3c';
@@ -503,7 +580,6 @@
         const C_FACE_DARK    = '#1a1815';
         const C_FACE_MID     = '#282420';
 
-        // Outer Dark Shadow Rim
         fc.fillStyle = C_BORDER_DARK;
         fc.fillRect(4, 0, 8, 1);
         fc.fillRect(4, 15, 8, 1);
@@ -518,7 +594,6 @@
         fc.fillRect(2, 14, 3, 1);
         fc.fillRect(11, 14, 3, 1);
 
-        // Inner Brass Casing
         fc.fillStyle = C_BEZEL_MID;
         fc.fillRect(4, 1, 8, 2);
         fc.fillRect(4, 13, 8, 2);
@@ -529,33 +604,26 @@
         fc.fillRect(3, 12, 2, 2);
         fc.fillRect(11, 12, 2, 2);
 
-        // Casing Highlights (Top-Left Light Source)
         fc.fillStyle = C_BEZEL_LIGHT;
         fc.fillRect(5, 1, 6, 1);
         fc.fillRect(2, 5, 1, 6);
         fc.fillRect(3, 3, 2, 1);
 
-        // Casing Shadows (Bottom-Right Shadow)
         fc.fillStyle = C_BEZEL_DARK;
         fc.fillRect(5, 14, 6, 1);
         fc.fillRect(14, 5, 1, 6);
         fc.fillRect(11, 12, 2, 1);
 
-        // Compass Internal Dial Face
         fc.fillStyle = C_FACE_MID;
         fc.fillRect(3, 4, 10, 8);
         fc.fillRect(4, 3, 8, 10);
-
         fc.fillStyle = C_FACE_DARK;
         fc.fillRect(5, 5, 6, 6);
 
-        // 2. Draw Needle Based on Angle
-        // Minecraft needle has 32 discrete rotational frames in native textures
         const rad = ((angleDegrees - 90) * Math.PI) / 180;
         const cx = 7.5;
         const cy = 7.5;
 
-        // Needle Red Tip (Front) and Silver Counter-balance (Tail)
         const tipDist = 4.8;
         const tipX = Math.round(cx + Math.cos(rad) * tipDist);
         const tipY = Math.round(cy + Math.sin(rad) * tipDist);
@@ -564,35 +632,28 @@
         const tailX = Math.round(cx - Math.cos(rad) * tailDist);
         const tailY = Math.round(cy - Math.sin(rad) * tailDist);
 
-        // Mid points of needle
         const midDist = 2.4;
         const midX = Math.round(cx + Math.cos(rad) * midDist);
         const midY = Math.round(cy + Math.sin(rad) * midDist);
 
-        // Render Tail (Silver / Off-white)
         fc.fillStyle = '#6e7072';
         fc.fillRect(tailX, tailY, 1, 1);
         fc.fillStyle = '#b3b6ba';
         fc.fillRect(Math.round((cx + tailX) / 2), Math.round((cy + tailY) / 2), 1, 1);
 
-        // Render Center Pin (Brass/Gold Pivot)
         fc.fillStyle = '#ffd54f';
         fc.fillRect(7, 7, 2, 2);
         fc.fillStyle = '#372b14';
         fc.fillRect(7, 7, 1, 1);
 
-        // Render Red Needle (Minecraft Redstone needle styling)
         fc.fillStyle = '#9e1a1a';
         fc.fillRect(midX, midY, 1, 1);
         fc.fillStyle = '#e52c2c';
         fc.fillRect(tipX, tipY, 1, 1);
 
-        // Redstone Shimmer/Core
         fc.fillStyle = '#ff7b7b';
         fc.fillRect(Math.round((midX + tipX) / 2), Math.round((midY + tipY) / 2), 1, 1);
 
-        // 3. Blit to High-Res Display Canvas with Crisp Nearest-Neighbor Scaling
-        destCtx.imageSmoothingEnabled = false;
         destCtx.clearRect(0, 0, destCtx.canvas.width, destCtx.canvas.height);
         destCtx.drawImage(this.frameCanvas, 0, 0, 16, 16, 0, 0, destCtx.canvas.width, destCtx.canvas.height);
       }
@@ -1122,6 +1183,21 @@
     document.getElementById('checkNeedleJitter').addEventListener('change', (e) => {
       state.enableSpringPhysics = e.target.checked;
     });
+
+    // Custom Sprite File Upload Listener
+    const inputSpriteFile = document.getElementById('inputSpriteFile');
+    if (inputSpriteFile) {
+      inputSpriteFile.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            compassRenderer.loadSprite(ev.target.result);
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
 
     // Simulation Sliders
     const simHeadingSlider = document.getElementById('simHeadingSlider');
