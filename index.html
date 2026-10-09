@@ -298,6 +298,17 @@
           <span>Minecraft Needle Spring & Jitter Physics</span>
         </label>
 
+        <!-- Physical Bluetooth Compass Hardware Section -->
+        <div class="mt-2 pt-2 border-t border-stone-800 flex flex-col gap-1.5">
+          <div class="flex justify-between items-center text-[10px]">
+            <span class="text-yellow-300 font-bold">Physical Compass (Raspberry Pi):</span>
+            <span id="bleStatusBadge" class="text-stone-400 font-mono text-[9px]">DISCONNECTED</span>
+          </div>
+          <button id="btnConnectBle" class="mc-btn py-1.5 text-[9px] text-cyan-200">
+            📡 PAIR PI BLUETOOTH
+          </button>
+        </div>
+
         <!-- Custom Sprite Sheet Loader -->
         <div class="mt-2 pt-2 border-t border-stone-800 flex flex-col gap-1">
           <div class="flex justify-between items-center text-[10px]">
@@ -415,6 +426,13 @@
       isConnected: false,
       bc: null, // BroadcastChannel fallback for sandboxed/multi-tab environments
       isLocalFallback: false,
+
+      // Web Bluetooth Hardware State
+      bleDevice: null,
+      bleCharacteristic: null,
+      bleConnected: false,
+      lastBleTransmitTime: 0,
+      lastSentFrameIdx: -1,
 
       // Manhunt Roles: 'seeker' or 'hider'
       myRole: 'seeker',
@@ -1232,6 +1250,10 @@
       // Draw compass
       compassRenderer.draw(ctx, quantizedAngle);
 
+      // Stream to Physical Raspberry Pi Compass over Web Bluetooth
+      const frameIndex = Math.floor(((quantizedAngle % 360) + 360) % 360 / (360.0 / FRAME_COUNT)) % FRAME_COUNT;
+      sendBleNeedleUpdate(frameIndex, now);
+
       // Update text indicators
       needleDegText.textContent = state.isSpinning ? 'SPIN' : `${Math.round(state.needleDisplayAngle)}°`;
       cardinalText.textContent = getCardinal(state.deviceHeading);
@@ -1523,6 +1545,89 @@
     document.getElementById('closeHelpModal').addEventListener('click', () => helpModal.classList.add('hidden'));
     document.getElementById('btnCloseHelpModalBtn').addEventListener('click', () => helpModal.classList.add('hidden'));
 
+    /* =========================================================
+     * WEB BLUETOOTH INTEGRATION FOR RASPBERRY PI
+     * ========================================================= */
+    const BLE_SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0";
+    const BLE_CHAR_UUID    = "12345678-1234-5678-1234-56789abcdef1";
+    const btnConnectBle = document.getElementById('btnConnectBle');
+    const bleStatusBadge = document.getElementById('bleStatusBadge');
+
+    async function connectBleHardware() {
+      if (!navigator.bluetooth) {
+        alert("Web Bluetooth is not supported in this browser. Please use Chrome on Android or a WebBLE browser on iOS.");
+        return;
+      }
+
+      try {
+        bleStatusBadge.textContent = "SCANNING...";
+        bleStatusBadge.className = "text-amber-400 font-mono text-[9px] animate-pulse";
+
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: "MC-Compass" }],
+          optionalServices: [BLE_SERVICE_UUID]
+        });
+
+        device.addEventListener('gattserverdisconnected', onBleDisconnected);
+        state.bleDevice = device;
+
+        bleStatusBadge.textContent = "CONNECTING...";
+        const server = await device.gatt.connect();
+
+        const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+        state.bleCharacteristic = await service.getCharacteristic(BLE_CHAR_UUID);
+        state.bleConnected = true;
+
+        bleStatusBadge.textContent = "CONNECTED (PI)";
+        bleStatusBadge.className = "text-emerald-400 font-mono text-[9px] font-bold";
+        btnConnectBle.textContent = "DISCONNECT PI";
+        btnConnectBle.classList.add('mc-btn-green');
+      } catch (err) {
+        console.warn("BLE Connection cancelled or failed:", err);
+        onBleDisconnected();
+      }
+    }
+
+    function onBleDisconnected() {
+      state.bleConnected = false;
+      state.bleCharacteristic = null;
+      state.bleDevice = null;
+      bleStatusBadge.textContent = "DISCONNECTED";
+      bleStatusBadge.className = "text-stone-400 font-mono text-[9px]";
+      btnConnectBle.textContent = "📡 PAIR PI BLUETOOTH";
+      btnConnectBle.classList.remove('mc-btn-green');
+    }
+
+    btnConnectBle.addEventListener('click', () => {
+      if (state.bleConnected && state.bleDevice) {
+        state.bleDevice.gatt.disconnect();
+      } else {
+        connectBleHardware();
+      }
+    });
+
+    function sendBleNeedleUpdate(frameIndex, now) {
+      if (!state.bleConnected || !state.bleCharacteristic) return;
+
+      // Throttle BLE writes to ~15-20 Hz (every 50ms) and skip redundant frames unless spinning
+      if (now - state.lastBleTransmitTime < 50) return;
+      if (!state.isSpinning && state.lastSentFrameIdx === frameIndex) return;
+
+      state.lastBleTransmitTime = now;
+      state.lastSentFrameIdx = frameIndex;
+
+      // Send 1 byte: frame index (0 - 31)
+      const payload = new Uint8Array([frameIndex]);
+      try {
+        if (state.bleCharacteristic.writeValueWithoutResponse) {
+          state.bleCharacteristic.writeValueWithoutResponse(payload);
+        } else {
+          state.bleCharacteristic.writeValue(payload);
+        }
+      } catch (e) {
+        console.warn("BLE Write error:", e);
+      }
+    }
 
     window.addEventListener('DOMContentLoaded', () => {
       // Periodic Telemetry Sync over WebRTC
