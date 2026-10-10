@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>IRL Manhunt • Peer Compass Tracker</title>
+  <title>IRL Manhunt • 16-Player Peer Compass Tracker</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- PeerJS for WebRTC Direct Mesh -->
+  <!-- PeerJS for WebRTC Mesh Networking -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <!-- QRCode.js for instant mobile scanning -->
+  <!-- QRCode.js for mobile room joining -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Google Fonts: Press Start 2P & Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -49,7 +49,7 @@
       image-rendering: crisp-edges;
     }
 
-    /* Authentic Minecraft Button styles */
+    /* Minecraft UI Button styling */
     .mc-btn {
       position: relative;
       font-family: var(--mc-font);
@@ -89,6 +89,16 @@
     .mc-btn-green:hover:not(:disabled) {
       background: #388e3c;
     }
+    .mc-btn-red {
+      background: #8b1e1e;
+      border-top-color: #e57373;
+      border-left-color: #e57373;
+      border-right-color: #4a0d0d;
+      border-bottom-color: #4a0d0d;
+    }
+    .mc-btn-red:hover:not(:disabled) {
+      background: #b71c1c;
+    }
     .mc-btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -122,7 +132,6 @@
       box-shadow: 0 0 0 1px #110022;
     }
 
-    /* Custom scrollbars */
     ::-webkit-scrollbar {
       width: 6px;
       height: 6px;
@@ -139,19 +148,26 @@
 <body class="min-h-screen text-stone-200 flex flex-col justify-between items-center p-3 select-none overflow-x-hidden">
 
   <!-- Top Header & Status Bar -->
-  <header class="w-full max-w-md flex flex-col items-center gap-2 pt-1 pb-2">
+  <header class="w-full max-w-md flex flex-col items-center gap-2 pt-1 pb-1">
     <div class="flex items-center justify-between w-full px-2">
       <div class="flex items-center gap-2">
         <span class="inline-block w-3 h-3 rounded-none bg-red-600 border border-black shadow"></span>
         <h1 class="mc-font text-xs sm:text-sm text-yellow-400 mc-gold-shadow tracking-wider">IRL MANHUNT</h1>
       </div>
-      <button id="helpModalBtn" class="mc-btn px-2 py-1 text-[9px]">?</button>
+      <div class="flex items-center gap-1.5">
+        <span id="playerCountBadge" class="mc-font text-[8px] bg-stone-900 border border-stone-700 px-1.5 py-1 text-cyan-300">1/16 PLAYERS</span>
+        <button id="helpModalBtn" class="mc-btn px-2 py-1 text-[9px]">?</button>
+      </div>
     </div>
 
-    <!-- Sandbox / Mode Notice Banner -->
-    <div id="sandboxNotice" class="hidden w-full py-1 px-2.5 bg-amber-950/80 border border-amber-600/70 text-[9px] text-amber-200 rounded-sm flex items-center justify-between">
-      <span>🛡️ Canvas Sandbox active: Using local channel (Works on GitHub Pages)</span>
-      <button id="dismissNoticeBtn" class="text-amber-400 font-bold ml-1">✕</button>
+    <!-- Player Name Customization Bar -->
+    <div class="w-full py-1.5 px-2 bg-stone-900/90 border-2 border-stone-700 flex items-center justify-between rounded-sm">
+      <div class="flex items-center gap-1.5 flex-1 mr-2">
+        <span class="mc-font text-[8px] text-stone-400">NAME:</span>
+        <input id="inputPlayerName" type="text" maxlength="14" placeholder="Steve"
+               class="flex-1 bg-stone-950 border border-stone-700 px-2 py-0.5 text-yellow-300 mc-font text-[9px] tracking-wider outline-none focus:border-yellow-500">
+      </div>
+      <button id="btnSaveName" class="mc-btn px-2 py-1 text-[8px]">SAVE</button>
     </div>
 
     <!-- Peer Connection Pill -->
@@ -163,10 +179,10 @@
       <div id="roomCodeDisplay" class="mc-font text-[9px] text-yellow-300 tracking-wider">ROOM: ----</div>
     </div>
 
-    <!-- Role Selection Bar -->
+    <!-- Team Selection Bar (Independent Choice) -->
     <div id="roleSelectorBar" class="w-full py-1.5 px-2 bg-stone-900/90 border-2 border-stone-700 flex items-center justify-between rounded-sm">
       <div class="flex items-center gap-1.5">
-        <span class="mc-font text-[8px] text-stone-400">ROLE:</span>
+        <span class="mc-font text-[8px] text-stone-400">TEAM:</span>
         <span id="roleIndicatorText" class="mc-font text-[9px] text-emerald-400 font-bold">SEEKER</span>
       </div>
       <div class="flex gap-1">
@@ -194,13 +210,13 @@
       </div>
     </div>
 
-    <!-- Target Info HUD Box (Minecraft Item Tooltip style) -->
-    <div class="mc-tooltip w-full mt-3 p-3 text-center shadow-lg border border-purple-950/70">
-      <div class="mc-font text-xs text-yellow-300 tracking-wide mb-1" id="targetNameLabel">TRACKING: WAITING FOR PEER</div>
+    <!-- Target Info HUD Box (Nearest Opponent Tracking) -->
+    <div class="mc-tooltip w-full mt-2.5 p-3 text-center shadow-lg border border-purple-950/70">
+      <div class="mc-font text-[10px] text-yellow-300 tracking-wide mb-1" id="targetNameLabel">TRACKING: WAITING FOR PLAYERS</div>
       <div class="mc-font text-sm text-white mc-text-shadow font-bold flex items-center justify-center gap-1" id="distanceMainLabel">
         <span>--</span> <span class="text-xs text-stone-400">blocks</span>
       </div>
-      <div class="text-[10px] text-stone-400 mt-1 flex justify-center gap-4">
+      <div class="text-[10px] text-stone-400 mt-1 flex justify-center gap-4 font-mono">
         <span>Bearing: <strong id="bearingText" class="text-stone-200">--°</strong></span>
         <span>Heading: <strong id="headingText" class="text-stone-200">--°</strong></span>
       </div>
@@ -219,29 +235,30 @@
 
   <footer class="w-full max-w-md flex flex-col gap-2 pb-2">
     <!-- Action Tab Buttons -->
-    <div class="grid grid-cols-3 gap-1">
-      <button id="tabConnectBtn" class="mc-btn py-2 text-[9px] bg-stone-700">LINK PEER</button>
-      <button id="tabTelemetryBtn" class="mc-btn py-2 text-[9px]">TELEMETRY</button>
-      <button id="tabSimBtn" class="mc-btn py-2 text-[9px]">SIMULATE</button>
+    <div class="grid grid-cols-4 gap-1">
+      <button id="tabConnectBtn" class="mc-btn py-2 text-[8px] bg-stone-700">ROOM</button>
+      <button id="tabRosterBtn" class="mc-btn py-2 text-[8px]">ROSTER</button>
+      <button id="tabTelemetryBtn" class="mc-btn py-2 text-[8px]">SETTINGS</button>
+      <button id="tabSimBtn" class="mc-btn py-2 text-[8px]">SIM</button>
     </div>
 
     <!-- PANEL 1: Connection & Room Pairing Drawer -->
     <div id="panelConnect" class="bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2">
       <div class="flex items-center justify-between">
-        <span class="mc-font text-[9px] text-stone-400 uppercase">Direct Mesh Connection</span>
+        <span class="mc-font text-[9px] text-stone-400 uppercase">16-Player Match Lobby</span>
         <button id="closeConnectPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
       </div>
 
       <!-- Mode Selector -->
       <div class="grid grid-cols-2 gap-2 mt-1">
-        <button id="btnModeHost" class="mc-btn mc-btn-green py-2 text-[9px]">1. CREATE ROOM</button>
-        <button id="btnModeJoin" class="mc-btn py-2 text-[9px]">2. JOIN ROOM</button>
+        <button id="btnModeHost" class="mc-btn mc-btn-green py-2 text-[9px]">1. CREATE LOBBY</button>
+        <button id="btnModeJoin" class="mc-btn py-2 text-[9px]">2. JOIN LOBBY</button>
       </div>
 
       <!-- Host View -->
       <div id="hostSection" class="hidden flex flex-col items-center gap-2 pt-2 border-t border-stone-800">
         <div class="text-center">
-          <p class="text-[11px] text-stone-300">Scan this QR code with Phone 2 or share code:</p>
+          <p class="text-[11px] text-stone-300">Invite up to 15 other players via QR or code:</p>
           <div class="mc-font text-lg text-yellow-300 tracking-widest my-1 select-all" id="hostCodeValue">------</div>
         </div>
 
@@ -260,24 +277,55 @@
                  class="flex-1 bg-stone-950 border-2 border-stone-700 px-3 py-1.5 text-yellow-400 uppercase mc-font text-xs tracking-wider outline-none focus:border-yellow-500">
           <button id="btnSubmitJoin" class="mc-btn mc-btn-green px-4 py-2 text-[9px]">CONNECT</button>
         </div>
-        <p class="text-[9px] text-stone-400 italic">Both devices need an active internet connection to initiate WebRTC peer handshake.</p>
+        <p class="text-[9px] text-stone-400 italic">Up to 16 players can join the same host room over WebRTC.</p>
       </div>
     </div>
 
-    <!-- PANEL 2: Telemetry & Calibration -->
+    <!-- PANEL 2: Roster Drawer (Seeker vs Hider team list) -->
+    <div id="panelRoster" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2.5 max-h-72 overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-stone-800 pb-1">
+        <span class="mc-font text-[9px] text-yellow-400 uppercase">Live Player Roster (<span id="rosterCount">1</span>/16)</span>
+        <button id="closeRosterPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
+      </div>
+
+      <div class="flex flex-col gap-2 text-[10px]">
+        <!-- Seekers section -->
+        <div class="bg-black/40 p-2 border border-emerald-900/60 rounded-sm">
+          <div class="mc-font text-[8px] text-emerald-400 mb-1.5 flex justify-between">
+            <span>🎯 SEEKERS (<span id="countSeekers">0</span>)</span>
+            <span class="text-stone-400 text-[7px]">CHASING HIDER</span>
+          </div>
+          <div id="listSeekers" class="flex flex-col gap-1 font-mono text-[9px] text-stone-300">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Hiders section -->
+        <div class="bg-black/40 p-2 border border-amber-900/60 rounded-sm">
+          <div class="mc-font text-[8px] text-amber-400 mb-1.5 flex justify-between">
+            <span>🏃 HIDERS (<span id="countHiders">0</span>)</span>
+            <span class="text-stone-400 text-[7px]">EVADING SEEKER</span>
+          </div>
+          <div id="listHiders" class="flex flex-col gap-1 font-mono text-[9px] text-stone-300">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL 3: Telemetry, Hardware & Calibration -->
     <div id="panelTelemetry" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2.5 text-[11px]">
       <div class="flex items-center justify-between border-b border-stone-800 pb-1">
-        <span class="mc-font text-[9px] text-stone-400 uppercase">GPS & Calibration Settings</span>
+        <span class="mc-font text-[9px] text-stone-400 uppercase">Calibration & Hardware</span>
         <button id="closeTelemetryPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
       </div>
 
       <div class="grid grid-cols-2 gap-2 text-[10px] font-mono bg-black/40 p-2 border border-stone-800">
         <div>My Lat: <span id="telMyLat" class="text-amber-300">--</span></div>
         <div>My Lon: <span id="telMyLon" class="text-amber-300">--</span></div>
-        <div>Peer Lat: <span id="telPeerLat" class="text-cyan-300">--</span></div>
-        <div>Peer Lon: <span id="telPeerLon" class="text-cyan-300">--</span></div>
-        <div>GPS Accuracy: <span id="telAcc" class="text-green-300">--</span></div>
-        <div>Motion Source: <span id="telSource" class="text-stone-300">None</span></div>
+        <div>GPS Acc: <span id="telAcc" class="text-green-300">--</span></div>
+        <div>Sensor: <span id="telSource" class="text-stone-300">None</span></div>
+        <div class="col-span-2">Nearest Opponent: <span id="telOpponentName" class="text-yellow-300">None</span></div>
       </div>
 
       <!-- Invert & Calibration Sliders -->
@@ -290,12 +338,12 @@
 
         <label class="flex items-center gap-2 text-[10px] text-stone-300 cursor-pointer mt-1">
           <input type="checkbox" id="checkInvertRot" class="accent-yellow-400">
-          <span>Invert Compass Needle Rotation (Swap CW/CCW)</span>
+          <span>Invert Needle Rotation (Swap CW/CCW)</span>
         </label>
         
         <label class="flex items-center gap-2 text-[10px] text-stone-300 cursor-pointer">
           <input type="checkbox" id="checkNeedleJitter" checked class="accent-yellow-400">
-          <span>Minecraft Needle Spring & Jitter Physics</span>
+          <span>Minecraft Spring & Jitter Physics</span>
         </label>
 
         <!-- Physical Bluetooth Compass Hardware Section -->
@@ -323,58 +371,57 @@
       </div>
     </div>
 
-    <!-- PANEL 3: Simulator (Virtual Peer Location with Live Phone Sensors) -->
+    <!-- PANEL 4: Simulator (Virtual Peer Location with Live Phone Sensors) -->
     <div id="panelSim" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2.5">
       <div class="flex items-center justify-between border-b border-stone-800 pb-1">
-        <span class="mc-font text-[9px] text-yellow-400 uppercase">Virtual Peer Simulator</span>
+        <span class="mc-font text-[9px] text-yellow-400 uppercase">Virtual Opponent Simulator</span>
         <button id="closeSimPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
       </div>
       
       <p class="text-[10px] text-stone-300 leading-tight">
-        Spawns a virtual peer so you can test using your phone's <strong class="text-emerald-400">real compass & GPS</strong> without needing a second phone.
+        Spawns a mock opponent so you can test using your phone's real compass & GPS without waiting for others.
       </p>
 
       <!-- Toggle Spawn Button -->
       <button id="btnToggleSimMode" class="mc-btn mc-btn-green py-2 text-[10px] font-bold tracking-wider">
-        🎯 SPAWN VIRTUAL PEER
+        🎯 SPAWN VIRTUAL OPPONENT
       </button>
 
       <!-- Quick Preset Buttons -->
       <div class="flex flex-col gap-1">
-        <span class="text-[10px] text-stone-400 font-mono">Quick Spawn Presets (Relative to you):</span>
+        <span class="text-[10px] text-stone-400 font-mono">Quick Distance Presets:</span>
         <div class="grid grid-cols-4 gap-1">
+          <button id="btnPresetNether" class="mc-btn py-1.5 text-[8px] text-red-300">10ft (SPIN)</button>
           <button id="btnPresetN" class="mc-btn py-1.5 text-[8px]">50m N</button>
           <button id="btnPresetE" class="mc-btn py-1.5 text-[8px]">50m E</button>
           <button id="btnPresetS" class="mc-btn py-1.5 text-[8px]">50m S</button>
-          <button id="btnPresetW" class="mc-btn py-1.5 text-[8px]">50m W</button>
         </div>
       </div>
 
       <!-- Sliders for Custom Virtual Location -->
       <div class="flex flex-col gap-1.5 text-[10px] pt-1 border-t border-stone-800">
         <div class="flex justify-between">
-          <span>Peer Bearing from You:</span>
+          <span>Bearing from You:</span>
           <span id="simBearingVal" class="text-cyan-400 font-mono">0° (NORTH)</span>
         </div>
         <input id="simBearingSlider" type="range" min="0" max="359" value="0" class="w-full accent-cyan-400 cursor-pointer">
 
         <div class="flex justify-between mt-1">
-          <span>Peer Distance:</span>
-          <span id="simDistVal" class="text-green-400 font-mono">50 blocks (50m)</span>
+          <span>Distance (Feet):</span>
+          <span id="simDistVal" class="text-green-400 font-mono">164 ft (Close)</span>
         </div>
-        <input id="simDistSlider" type="range" min="5" max="500" value="50" class="w-full accent-green-400 cursor-pointer">
+        <input id="simDistSlider" type="range" min="3" max="500" value="50" class="w-full accent-green-400 cursor-pointer">
 
         <!-- Anchored GPS & Desktop Overrides -->
         <label class="flex items-center gap-2 text-[10px] text-stone-300 cursor-pointer mt-1">
           <input type="checkbox" id="checkAnchorGps" checked class="accent-yellow-400">
-          <span>Anchor peer to fixed GPS coords (walk around it)</span>
+          <span>Anchor to GPS (walk around the virtual player)</span>
         </label>
 
-        <!-- Optional Desktop Heading Fallback -->
         <div class="mt-2 pt-2 border-t border-stone-800 flex flex-col gap-1">
           <label class="flex items-center gap-2 text-[10px] text-stone-400 cursor-pointer">
             <input type="checkbox" id="checkManualHeading" class="accent-yellow-400">
-            <span>Desktop override: Manual heading slider (ignore motion sensor)</span>
+            <span>Desktop override: Manual heading slider</span>
           </label>
           <div id="manualHeadingBox" class="hidden flex-col gap-1 mt-1">
             <div class="flex justify-between text-[9px]">
@@ -388,91 +435,89 @@
     </div>
   </footer>
 
-  <!-- Help & Info Modal -->
+  <!-- Help & Rules Modal -->
   <div id="helpModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="mc-tooltip max-w-sm w-full p-4 border-2 border-stone-600 text-stone-300 flex flex-col gap-3">
       <div class="flex justify-between items-center border-b border-stone-700 pb-2">
-        <h2 class="mc-font text-xs text-yellow-400">HOW TO USE</h2>
+        <h2 class="mc-font text-xs text-yellow-400">HOW TO PLAY</h2>
         <button id="closeHelpModal" class="text-stone-400 hover:text-white font-bold text-sm">✕</button>
       </div>
       <ol class="text-xs space-y-2 list-decimal list-inside text-stone-300">
-        <li><strong>Open on Phone 1:</strong> Tap <em>Create Room</em> to generate a code or QR code.</li>
-        <li><strong>Open on Phone 2:</strong> Scan the QR code or enter the 6-letter room code.</li>
-        <li><strong>Pick Your Roles:</strong> Tap <em>SEEKER</em> or <em>HIDER</em>. Choosing Seeker automatically sets your peer to Hider!</li>
-        <li><strong>Grant Permissions:</strong> Tap <em>Enable Compass</em> and <em>Enable GPS</em> on both phones.</li>
-        <li><strong>Hold phones flat:</strong> The needle will wobble and point directly toward the other player. Within 25 ft, the compass enters Nether spin: the Seeker sees <strong>SEEK</strong> and the Hider sees <strong>HIDE</strong>!</li>
+        <li><strong>Set your Name:</strong> Enter your callsign in the top box and tap <em>SAVE</em>.</li>
+        <li><strong>Form a Lobby:</strong> Player 1 taps <em>Create Lobby</em>. Up to 15 other players join using the QR code or 6-digit room code.</li>
+        <li><strong>Choose Teams:</strong> Tap <em>SEEKER</em> or <em>HIDER</em>. You can have any team distribution (e.g., 3 Seekers vs. 1 Hider).</li>
+        <li><strong>Lock Onto Opponents:</strong> Your compass automatically points directly to the <strong>physically closest opponent</strong> on the other team.</li>
+        <li><strong>15-Foot Nether Spin:</strong> When you get within 15 feet of your target, the needle enters erratic Nether spin! Seekers see <strong>SEEK</strong> and Hiders see <strong>HIDE</strong>!</li>
       </ol>
-      <div class="bg-black/50 p-2 text-[10px] text-stone-400 border border-stone-800">
-        💡 <strong>Tip:</strong> If your compass points backwards on your particular Android or iPhone model, tap <em>Telemetry</em> and click <strong>+180° Flip</strong>.
-      </div>
-      <button id="btnCloseHelpModalBtn" class="mc-btn py-1.5 text-[9px]">GOT IT</button>
+      <button id="btnCloseHelpModalBtn" class="mc-btn py-1.5 text-[9px]">READY</button>
     </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toastMessage" class="fixed top-12 left-1/2 -translate-x-1/2 bg-black/90 border border-yellow-500 text-yellow-300 px-4 py-2 mc-font text-[9px] rounded-sm pointer-events-none transition-opacity duration-300 opacity-0 z-50">
+    Notification
   </div>
 
   <script>
     /* =========================================================
-     * MINECRAFT COMPASS PEER APPLICATION
+     * IRL MANHUNT - 16-PLAYER MESH TRACKER
      * Single-file standalone P2P WebRTC Tracker
      * ========================================================= */
 
-    // Application State
+    const MAX_LOBBY_SIZE = 16;
+    const NETHER_SPIN_FEET = 15; // Nether spin activates closer than 15 feet
+
+    // Saved player name
+    const savedName = localStorage.getItem('mc_player_name') || `Player_${Math.floor(100 + Math.random() * 900)}`;
+
     const state = {
-      // Identity & Networking
+      // Identity
+      myId: null,
+      myName: savedName,
+      myRole: 'seeker', // 'seeker' or 'hider'
+
+      // Room & WebRTC Networking
       peer: null,
-      conn: null,
-      peerId: null,
+      connections: new Map(), // Host tracks connection objects to clients: peerId -> conn
+      clientHostConn: null,   // Client's single connection to Host
       roomCode: null,
       isHost: false,
       isConnected: false,
-      bc: null, // BroadcastChannel fallback for sandboxed/multi-tab environments
-      isLocalFallback: false,
+      bc: null,
 
-      // Web Bluetooth Hardware State
+      // 16-Player Roster: peerId -> { id, name, role, lat, lon, heading, lastSeen, distance }
+      roster: new Map(),
+
+      // Closest Opponent
+      trackedOpponent: null, // { id, name, role, distanceMeters, bearing }
+
+      // Local Sensors
+      myLat: null,
+      myLon: null,
+      myAccuracy: null,
+      deviceHeading: 0,
+      motionPermitted: false,
+      gpsPermitted: false,
+
+      // Calibration & Physics
+      textureOffset: 0,
+      invertRotation: false,
+      enableSpringPhysics: true,
+      needleDisplayAngle: 0,
+      needleVelocity: 0,
+      isSpinning: false,
+      spinSpeed: 520,
+
+      // Web Bluetooth Hardware (Raspberry Pi)
       bleDevice: null,
       bleCharacteristic: null,
       bleConnected: false,
       lastBleTransmitTime: 0,
       lastSentFrameIdx: -1,
 
-      // Manhunt Roles: 'seeker' or 'hider'
-      myRole: 'seeker',
-      peerRole: 'hider',
-
-      // Local Sensors
-      myLat: null,
-      myLon: null,
-      myAccuracy: null,
-      deviceHeading: 0, // 0 = North, 90 = East
-      motionPermitted: false,
-      gpsPermitted: false,
-
-      // Peer Sensors
-      peerLat: null,
-      peerLon: null,
-      peerHeading: null,
-      peerLastSeen: 0,
-
-      // Navigation & Calculation
-      targetBearing: 0,
-      distanceMeters: null,
-      relativeAngle: 0,
-
-      // Calibration & Offsets
-      textureOffset: 0,
-      invertRotation: false,
-      enableSpringPhysics: true,
-
-      // Spring / Wobble Physics State
-      needleDisplayAngle: 0,
-      needleVelocity: 0,
-
-      // Nether Spin State (< 25 ft proximity)
-      isSpinning: false,
-      spinSpeed: 520,
-
-      // Virtual Peer Simulation mode
+      // Virtual Simulation Mode
       simulating: false,
-      simPeerDistance: 50,
+      simPeerDistanceFeet: 164, // ~50m
       simPeerBearing: 0,
       simPeerLat: null,
       simPeerLon: null,
@@ -493,25 +538,21 @@
     const headingText = document.getElementById('headingText');
     const needleDegText = document.getElementById('needleDegText');
     const cardinalText = document.getElementById('cardinalText');
+    const playerCountBadge = document.getElementById('playerCountBadge');
+    const inputPlayerName = document.getElementById('inputPlayerName');
+    const toastMessage = document.getElementById('toastMessage');
 
-    // Drawer Panels
-    const panelConnect = document.getElementById('panelConnect');
-    const panelTelemetry = document.getElementById('panelTelemetry');
-    const panelSim = document.getElementById('panelSim');
-    const hostSection = document.getElementById('hostSection');
-    const joinSection = document.getElementById('joinSection');
-    const hostCodeValue = document.getElementById('hostCodeValue');
-    const qrcodeBox = document.getElementById('qrcodeBox');
-    const copyFeedback = document.getElementById('copyFeedback');
-    const sandboxNotice = document.getElementById('sandboxNotice');
-    document.getElementById('dismissNoticeBtn')?.addEventListener('click', () => {
-      sandboxNotice.classList.add('hidden');
-    });
+    inputPlayerName.value = state.myName;
 
-    /**
-     * Calculates great-circle forward azimuth bearing from (lat1, lon1) to (lat2, lon2)
-     * Returns degree in range [0, 360) where 0 is true North
-     */
+    function showToast(msg) {
+      toastMessage.textContent = msg;
+      toastMessage.style.opacity = '1';
+      setTimeout(() => { toastMessage.style.opacity = '0'; }, 2200);
+    }
+
+    /* =========================================================
+     * MATHEMATICS: GEODESIC BEARING & HAVERSINE DISTANCE
+     * ========================================================= */
     function calculateBearing(lat1, lon1, lat2, lon2) {
       if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return 0;
       const phi1 = (lat1 * Math.PI) / 180;
@@ -522,13 +563,9 @@
       const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
 
       const theta = Math.atan2(y, x);
-      const bearing = (theta * 180 / Math.PI + 360) % 360;
-      return bearing;
+      return (theta * 180 / Math.PI + 360) % 360;
     }
 
-    /**
-     * Projects a target GPS coordinate given a start coordinate, distance in meters, and forward azimuth
-     */
     function calculateDestinationPoint(lat, lon, distanceMeters, bearingDeg) {
       if (lat === null || lon === null) return { lat: null, lon: null };
       const R = 6371000;
@@ -546,12 +583,9 @@
       };
     }
 
-    /**
-     * Calculates distance between coordinates in meters using the Haversine formula
-     */
     function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
       if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return null;
-      const R = 6371000; // Earth radius in meters
+      const R = 6371000;
       const phi1 = (lat1 * Math.PI) / 180;
       const phi2 = (lat2 * Math.PI) / 180;
       const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
@@ -561,31 +595,20 @@
                 Math.cos(phi1) * Math.cos(phi2) *
                 Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
       return R * c;
     }
 
-    /**
-     * Shortest angular difference from angle a to angle b (-180 to 180)
-     */
     function angleDifference(source, target) {
       let diff = (target - source + 180) % 360 - 180;
       return diff < -180 ? diff + 360 : diff;
     }
 
-    /**
-     * Converts angle to 8-point cardinal abbreviation
-     */
     function getCardinal(deg) {
       const dirs = ['NORTH', 'NE', 'EAST', 'SE', 'SOUTH', 'SW', 'WEST', 'NW'];
       const index = Math.round(((deg % 360) + 360) % 360 / 45) % 8;
       return dirs[index];
     }
 
-    /**
-     * Minecraft Compass Renderer with 'compass.png' sprite-sheet support
-     * Automatically extracts vertical animation strip frames with procedural fallback
-     */
     class MinecraftCompassRenderer {
       constructor() {
         this.frameCanvas = document.createElement('canvas');
@@ -599,13 +622,9 @@
         this.frameW = 16;
         this.frameH = 16;
 
-        // Automatically pull from 'compass.png'
         this.loadSprite('compass.png');
       }
 
-      /**
-       * Loads a sprite sheet image and calculates frame geometry
-       */
       loadSprite(src) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -613,11 +632,9 @@
           this.spriteImg = img;
           this.spriteLoaded = true;
           this.frameW = img.naturalWidth;
-          // Standard Minecraft compass texture sheets are vertical strips with square frames
           this.frameCount = Math.max(1, Math.round(img.naturalHeight / img.naturalWidth));
           this.frameH = img.naturalHeight / this.frameCount;
 
-          console.log(`[Compass] Loaded ${src}: ${img.naturalWidth}x${img.naturalHeight} (${this.frameCount} frames of ${this.frameW}x${this.frameH})`);
           const statusElem = document.getElementById('spriteStatusText');
           if (statusElem) {
             statusElem.textContent = `'compass.png' (${this.frameCount} frames)`;
@@ -626,7 +643,6 @@
         };
         img.onerror = () => {
           this.spriteLoaded = false;
-          console.warn(`[Compass] Could not load '${src}'. Using procedural pixel-art fallback.`);
           const statusElem = document.getElementById('spriteStatusText');
           if (statusElem) {
             statusElem.textContent = `'${src}' not found (Using procedural fallback)`;
@@ -636,15 +652,10 @@
         img.src = src;
       }
 
-      /**
-       * Renders the compass needle frame onto the main 256x256 display canvas
-       * @param {CanvasRenderingContext2D} destCtx
-       * @param {number} angleDegrees - Compass needle angle where 0 points up
-       */
       draw(destCtx, angleDegrees) {
         destCtx.imageSmoothingEnabled = false;
 
-        // 1. Draw from loaded compass.png sprite sheet if available
+        // 1. Sprite sheet render
         if (this.spriteLoaded && this.spriteImg.complete && this.frameCount > 0) {
           const normAngle = ((angleDegrees % 360) + 360) % 360;
           const frameIndex = Math.floor(normAngle / (360.0 / this.frameCount)) % this.frameCount;
@@ -664,91 +675,46 @@
           return;
         }
 
-        // 2. Fallback procedural renderer if compass.png is missing or loading
+        // 2. Procedural pixel-art fallback
         const fc = this.fCtx;
         fc.clearRect(0, 0, 16, 16);
 
-        // Compass Brass Outer Bezel
-        const C_BORDER_DARK  = '#1e1b18';
-        const C_BEZEL_DARK   = '#423c31';
-        const C_BEZEL_MID    = '#6b5c3c';
-        const C_BEZEL_LIGHT  = '#9c8c5c';
-        const C_FACE_DARK    = '#1a1815';
-        const C_FACE_MID     = '#282420';
+        // Bezel & Frame
+        fc.fillStyle = '#1e1b18';
+        fc.fillRect(4, 0, 8, 1); fc.fillRect(4, 15, 8, 1);
+        fc.fillRect(0, 4, 1, 8); fc.fillRect(15, 4, 1, 8);
+        fc.fillRect(2, 1, 3, 1); fc.fillRect(11, 1, 3, 1);
+        fc.fillRect(1, 2, 2, 1); fc.fillRect(13, 2, 2, 1);
+        fc.fillRect(1, 13, 2, 1); fc.fillRect(13, 13, 2, 1);
+        fc.fillRect(2, 14, 3, 1); fc.fillRect(11, 14, 3, 1);
 
-        fc.fillStyle = C_BORDER_DARK;
-        fc.fillRect(4, 0, 8, 1);
-        fc.fillRect(4, 15, 8, 1);
-        fc.fillRect(0, 4, 1, 8);
-        fc.fillRect(15, 4, 1, 8);
-        fc.fillRect(2, 1, 3, 1);
-        fc.fillRect(11, 1, 3, 1);
-        fc.fillRect(1, 2, 2, 1);
-        fc.fillRect(13, 2, 2, 1);
-        fc.fillRect(1, 13, 2, 1);
-        fc.fillRect(13, 13, 2, 1);
-        fc.fillRect(2, 14, 3, 1);
-        fc.fillRect(11, 14, 3, 1);
+        fc.fillStyle = '#6b5c3c';
+        fc.fillRect(4, 1, 8, 2); fc.fillRect(4, 13, 8, 2);
+        fc.fillRect(1, 4, 2, 8); fc.fillRect(13, 4, 2, 8);
+        fc.fillRect(3, 2, 2, 2); fc.fillRect(11, 2, 2, 2);
+        fc.fillRect(3, 12, 2, 2); fc.fillRect(11, 12, 2, 2);
 
-        fc.fillStyle = C_BEZEL_MID;
-        fc.fillRect(4, 1, 8, 2);
-        fc.fillRect(4, 13, 8, 2);
-        fc.fillRect(1, 4, 2, 8);
-        fc.fillRect(13, 4, 2, 8);
-        fc.fillRect(3, 2, 2, 2);
-        fc.fillRect(11, 2, 2, 2);
-        fc.fillRect(3, 12, 2, 2);
-        fc.fillRect(11, 12, 2, 2);
-
-        fc.fillStyle = C_BEZEL_LIGHT;
-        fc.fillRect(5, 1, 6, 1);
-        fc.fillRect(2, 5, 1, 6);
-        fc.fillRect(3, 3, 2, 1);
-
-        fc.fillStyle = C_BEZEL_DARK;
-        fc.fillRect(5, 14, 6, 1);
-        fc.fillRect(14, 5, 1, 6);
-        fc.fillRect(11, 12, 2, 1);
-
-        fc.fillStyle = C_FACE_MID;
+        fc.fillStyle = '#282420';
         fc.fillRect(3, 4, 10, 8);
         fc.fillRect(4, 3, 8, 10);
-        fc.fillStyle = C_FACE_DARK;
+        fc.fillStyle = '#1a1815';
         fc.fillRect(5, 5, 6, 6);
 
+        // Needle
         const rad = ((angleDegrees - 90) * Math.PI) / 180;
-        const cx = 7.5;
-        const cy = 7.5;
+        const cx = 7.5; const cy = 7.5;
+        const tipX = Math.round(cx + Math.cos(rad) * 4.8);
+        const tipY = Math.round(cy + Math.sin(rad) * 4.8);
+        const tailX = Math.round(cx - Math.cos(rad) * 3.6);
+        const tailY = Math.round(cy - Math.sin(rad) * 3.6);
+        const midX = Math.round(cx + Math.cos(rad) * 2.4);
+        const midY = Math.round(cy + Math.sin(rad) * 2.4);
 
-        const tipDist = 4.8;
-        const tipX = Math.round(cx + Math.cos(rad) * tipDist);
-        const tipY = Math.round(cy + Math.sin(rad) * tipDist);
-
-        const tailDist = 3.6;
-        const tailX = Math.round(cx - Math.cos(rad) * tailDist);
-        const tailY = Math.round(cy - Math.sin(rad) * tailDist);
-
-        const midDist = 2.4;
-        const midX = Math.round(cx + Math.cos(rad) * midDist);
-        const midY = Math.round(cy + Math.sin(rad) * midDist);
-
-        fc.fillStyle = '#6e7072';
-        fc.fillRect(tailX, tailY, 1, 1);
-        fc.fillStyle = '#b3b6ba';
-        fc.fillRect(Math.round((cx + tailX) / 2), Math.round((cy + tailY) / 2), 1, 1);
-
-        fc.fillStyle = '#ffd54f';
-        fc.fillRect(7, 7, 2, 2);
-        fc.fillStyle = '#372b14';
-        fc.fillRect(7, 7, 1, 1);
-
-        fc.fillStyle = '#9e1a1a';
-        fc.fillRect(midX, midY, 1, 1);
-        fc.fillStyle = '#e52c2c';
-        fc.fillRect(tipX, tipY, 1, 1);
-
-        fc.fillStyle = '#ff7b7b';
-        fc.fillRect(Math.round((midX + tipX) / 2), Math.round((midY + tipY) / 2), 1, 1);
+        fc.fillStyle = '#6e7072'; fc.fillRect(tailX, tailY, 1, 1);
+        fc.fillStyle = '#b3b6ba'; fc.fillRect(Math.round((cx + tailX) / 2), Math.round((cy + tailY) / 2), 1, 1);
+        fc.fillStyle = '#ffd54f'; fc.fillRect(7, 7, 2, 2);
+        fc.fillStyle = '#9e1a1a'; fc.fillRect(midX, midY, 1, 1);
+        fc.fillStyle = '#e52c2c'; fc.fillRect(tipX, tipY, 1, 1);
 
         destCtx.clearRect(0, 0, destCtx.canvas.width, destCtx.canvas.height);
         destCtx.drawImage(this.frameCanvas, 0, 0, 16, 16, 0, 0, destCtx.canvas.width, destCtx.canvas.height);
@@ -757,7 +723,6 @@
 
     const compassRenderer = new MinecraftCompassRenderer();
 
-    // Generate readable random alphanumeric room IDs
     function generateRoomCode(len = 6) {
       const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
       let code = '';
@@ -772,250 +737,77 @@
         try { state.bc.close(); } catch(e){}
       }
       try {
-        state.bc = new BroadcastChannel(`mc-compass-${roomCode}`);
+        state.bc = new BroadcastChannel(`mc-lobby-${roomCode}`);
         state.bc.onmessage = (event) => {
           if (event.data) {
-            handleIncomingPeerData(event.data);
-            if (!state.isConnected) {
-              state.isConnected = true;
-              updateStatusUI('CONNECTED (LOCAL CHANNEL)', 'bg-emerald-500');
-              targetNameLabel.textContent = `TRACKING: LOCAL PEER (${roomCode})`;
-            }
+            handleIncomingPacket(event.data);
           }
         };
       } catch (err) {
-        console.warn('BroadcastChannel not supported in this browser:', err);
+        console.warn('BroadcastChannel error:', err);
       }
     }
 
-    function initPeer(customId = null, onReady = null) {
-      if (state.peer) {
-        try { state.peer.destroy(); } catch(e){}
-      }
+    function updateRosterUI() {
+      const totalPlayers = state.roster.size + 1; // +1 for self
+      playerCountBadge.textContent = `${totalPlayers}/${MAX_LOBBY_SIZE} PLAYERS`;
+      document.getElementById('rosterCount').textContent = totalPlayers;
 
-      updateStatusUI('INITIALIZING...', 'bg-yellow-500 animate-pulse');
+      const listSeekers = document.getElementById('listSeekers');
+      const listHiders = document.getElementById('listHiders');
+      listSeekers.innerHTML = '';
+      listHiders.innerHTML = '';
 
-      // Check if WebSockets are allowed before instantiating PeerJS
-      try {
-        state.peer = new Peer(customId, {
-          debug: 0,
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              { urls: 'stun:stun2.l.google.com:19302' }
-            ]
-          }
-        });
+      let seekerCount = state.myRole === 'seeker' ? 1 : 0;
+      let hiderCount = state.myRole === 'hider' ? 1 : 0;
 
-        state.peer.on('open', (id) => {
-          state.peerId = id;
-          if (onReady) onReady(id);
-        });
-
-        state.peer.on('connection', (connection) => {
-          setupDataConnection(connection);
-        });
-
-        state.peer.on('error', (err) => {
-          console.warn('PeerJS error encountered:', err);
-          if (err.type === 'unavailable-id') {
-            initPeer('MC-' + generateRoomCode(), onReady);
-            return;
-          }
-          fallbackToLocalMode(onReady);
-        });
-
-        state.peer.on('disconnected', () => {
-          updateStatusUI('RECONNECTING...', 'bg-yellow-500 animate-pulse');
-          try { state.peer.reconnect(); } catch(e){}
-        });
-
-      } catch (securityOrNetError) {
-        // Catches immediate SecurityError in restricted Canvas iframes
-        console.warn('Sandboxed environment prevented external WebSocket:', securityOrNetError);
-        fallbackToLocalMode(onReady);
-      }
-    }
-
-    function fallbackToLocalMode(onReady = null) {
-      state.isLocalFallback = true;
-      if (sandboxNotice) sandboxNotice.classList.remove('hidden');
-
-      const room = state.roomCode || 'DEMO';
-      initLocalBroadcastChannel(room);
-      updateStatusUI('LOCAL MESH READY', 'bg-blue-500');
-      targetNameLabel.textContent = 'READY (TAB SYNC / GITHUB PAGES FOR MOBILE)';
-      if (onReady) onReady(room);
-    }
-
-    function setupDataConnection(conn) {
-      state.conn = conn;
-
-      conn.on('open', () => {
-        state.isConnected = true;
-        updateStatusUI('CONNECTED TO PEER', 'bg-green-500');
-        updateTargetHudRole();
-        broadcastLocation();
-        broadcastRole(state.myRole);
-      });
-
-      conn.on('data', (data) => {
-        handleIncomingPeerData(data);
-      });
-
-      conn.on('close', () => {
-        state.isConnected = false;
-        updateStatusUI('PEER DISCONNECTED', 'bg-red-500');
-        targetNameLabel.textContent = 'TRACKING: PEER DISCONNECTED';
-      });
-
-      conn.on('error', (err) => {
-        console.error('DataChannel error:', err);
-        state.isConnected = false;
-        updateStatusUI('CONN ERROR', 'bg-red-500');
-      });
-    }
-
-    function updateTargetHudRole() {
-      if (state.simulating) {
-        targetNameLabel.textContent = state.myRole === 'seeker' ? 'TRACKING: VIRTUAL HIDER' : 'EVADING: VIRTUAL SEEKER';
-        return;
-      }
-      if (!state.isConnected) {
-        targetNameLabel.textContent = 'TRACKING: WAITING FOR PEER';
-        return;
-      }
-      const peerRoleName = state.myRole === 'seeker' ? 'HIDER' : 'SEEKER';
-      targetNameLabel.textContent = state.myRole === 'seeker' ? `TRACKING: ${peerRoleName}` : `EVADING: ${peerRoleName}`;
-    }
-
-    function setMyRole(newRole, sendBroadcast = true) {
-      state.myRole = newRole;
-      state.peerRole = newRole === 'seeker' ? 'hider' : 'seeker';
-
-      const btnSeeker = document.getElementById('btnRoleSeeker');
-      const btnHider = document.getElementById('btnRoleHider');
-      const roleText = document.getElementById('roleIndicatorText');
-
-      if (newRole === 'seeker') {
-        btnSeeker.classList.add('mc-btn-green');
-        btnHider.classList.remove('mc-btn-green');
-        roleText.textContent = 'SEEKER';
-        roleText.className = 'mc-font text-[9px] text-emerald-400 font-bold';
+      // Add self
+      const selfItem = document.createElement('div');
+      selfItem.className = 'flex justify-between items-center py-0.5 border-b border-white/5';
+      selfItem.innerHTML = `<span class="text-yellow-400 font-bold">${state.myName} (YOU)</span><span class="text-[8px] text-green-400">ACTIVE</span>`;
+      if (state.myRole === 'seeker') {
+        listSeekers.appendChild(selfItem);
       } else {
-        btnHider.classList.add('mc-btn-green');
-        btnSeeker.classList.remove('mc-btn-green');
-        roleText.textContent = 'HIDER';
-        roleText.className = 'mc-font text-[9px] text-amber-400 font-bold';
+        listHiders.appendChild(selfItem);
       }
 
-      updateTargetHudRole();
+      // Add peers
+      state.roster.forEach((peer) => {
+        const item = document.createElement('div');
+        item.className = 'flex justify-between items-center py-0.5 border-b border-white/5';
+        
+        const distStr = peer.distanceFeet !== null ? `${Math.round(peer.distanceFeet)}ft` : 'No GPS';
+        item.innerHTML = `<span>${peer.name}</span><span class="text-[8px] text-stone-400">${distStr}</span>`;
 
-      if (sendBroadcast) {
-        broadcastRole(newRole);
-      }
-    }
-
-    function broadcastRole(role) {
-      const payload = {
-        type: 'role_sync',
-        role: role
-      };
-      if (state.conn && state.isConnected) {
-        try { state.conn.send(payload); } catch(e){}
-      }
-      if (state.bc) {
-        try { state.bc.postMessage(payload); } catch(e){}
-      }
-    }
-
-    function handleIncomingPeerData(data) {
-      if (!data) return;
-
-      // Remote player picked their role; adapt our role reciprocally
-      if (data.type === 'role_sync' && data.role) {
-        state.peerRole = data.role;
-        const reciprocalRole = data.role === 'seeker' ? 'hider' : 'seeker';
-        if (state.myRole !== reciprocalRole) {
-          setMyRole(reciprocalRole, false);
+        if (peer.role === 'seeker') {
+          seekerCount++;
+          listSeekers.appendChild(item);
+        } else {
+          hiderCount++;
+          listHiders.appendChild(item);
         }
-        return;
-      }
+      });
 
-      if (data.type === 'telemetry') {
-        state.peerLat = data.lat;
-        state.peerLon = data.lon;
-        state.peerHeading = data.heading;
-        state.peerLastSeen = Date.now();
-        if (data.role && data.role !== state.peerRole) {
-          state.peerRole = data.role;
-          const reciprocalRole = data.role === 'seeker' ? 'hider' : 'seeker';
-          if (state.myRole !== reciprocalRole) {
-            setMyRole(reciprocalRole, false);
-          }
-        }
-
-        // Update HUD
-        document.getElementById('telPeerLat').textContent = data.lat != null ? data.lat.toFixed(5) : '--';
-        document.getElementById('telPeerLon').textContent = data.lon != null ? data.lon.toFixed(5) : '--';
-      }
+      document.getElementById('countSeekers').textContent = seekerCount;
+      document.getElementById('countHiders').textContent = hiderCount;
     }
 
-    function broadcastLocation() {
-      const payload = {
-        type: 'telemetry',
-        lat: state.myLat,
-        lon: state.myLon,
-        heading: state.deviceHeading,
-        role: state.myRole,
-        time: Date.now()
-      };
-
-      // 1. Send via active WebRTC DataChannel (GitHub Pages / real internet)
-      if (state.conn && state.isConnected) {
-        try {
-          state.conn.send(payload);
-        } catch (err) {
-          console.error('Failed to send packet:', err);
-        }
-      }
-
-      // 2. Send via local BroadcastChannel (allows multi-tab testing in Canvas)
-      if (state.bc) {
-        try {
-          state.bc.postMessage(payload);
-        } catch (e){}
-      }
-    }
-
-    function updateStatusUI(text, lightClass) {
-      connStatusText.textContent = text;
-      connLight.className = `w-2.5 h-2.5 rounded-full ${lightClass}`;
-    }
-
-
-    function createHostRoom() {
+    function createHostLobby() {
       state.isHost = true;
       const code = generateRoomCode(6);
       state.roomCode = code;
-      const customPeerId = `MC-COMPASS-${code}`;
+      const hostPeerId = `MC-LOBBY-${code}`;
 
-      // Initialize local broadcast channel simultaneously for tab-to-tab support
       initLocalBroadcastChannel(code);
-
-      initPeer(customPeerId, () => {
+      initPeer(hostPeerId, () => {
         roomCodeDisplay.textContent = `ROOM: ${code}`;
-        hostCodeValue.textContent = code;
-        if (!state.isLocalFallback) {
-          updateStatusUI('WAITING FOR PEER...', 'bg-amber-400 animate-pulse');
-        }
+        document.getElementById('hostCodeValue').textContent = code;
+        updateStatusUI('WAITING FOR PLAYERS (HOST)', 'bg-amber-400 animate-pulse');
 
-        // Generate full joining URL
         const joinUrl = new URL(window.location.href);
         joinUrl.searchParams.set('room', code);
 
-        // Render QR Code
+        const qrcodeBox = document.getElementById('qrcodeBox');
         qrcodeBox.innerHTML = '';
         new QRCode(qrcodeBox, {
           text: joinUrl.toString(),
@@ -1028,59 +820,230 @@
       });
     }
 
-    function joinHostRoom(code) {
+    function joinLobby(code) {
       if (!code) return;
       code = code.trim().toUpperCase();
       state.isHost = false;
       state.roomCode = code;
-      const targetPeerId = `MC-COMPASS-${code}`;
+      const targetHostId = `MC-LOBBY-${code}`;
 
-      // Initialize local broadcast channel
       initLocalBroadcastChannel(code);
-
       initPeer(null, () => {
         roomCodeDisplay.textContent = `ROOM: ${code}`;
-        updateStatusUI('CONNECTING...', 'bg-yellow-400 animate-pulse');
+        updateStatusUI('JOINING LOBBY...', 'bg-yellow-400 animate-pulse');
+
         try {
-          const connection = state.peer.connect(targetPeerId, {
-            reliable: true
+          const conn = state.peer.connect(targetHostId, { reliable: true });
+          state.clientHostConn = conn;
+
+          conn.on('open', () => {
+            state.isConnected = true;
+            updateStatusUI('CONNECTED TO LOBBY', 'bg-green-500');
+            showToast(`Connected to room ${code}!`);
+            broadcastMyState();
           });
-          setupDataConnection(connection);
+
+          conn.on('data', (data) => {
+            handleIncomingPacket(data);
+          });
+
+          conn.on('close', () => {
+            state.isConnected = false;
+            updateStatusUI('LOBBY CLOSED', 'bg-red-500');
+          });
         } catch (err) {
-          console.warn('P2P connect fallback:', err);
+          console.warn('Lobby join error:', err);
         }
       });
     }
 
-    // Global guard against uncaught WebSocket SecurityErrors thrown by third-party scripts
-    window.addEventListener('error', (event) => {
-      if (event.message && event.message.includes('SecurityError')) {
-        event.preventDefault(); // Prevent noisy uncaught console error
-        fallbackToLocalMode();
+    function initPeer(customId = null, onReady = null) {
+      if (state.peer) {
+        try { state.peer.destroy(); } catch(e){}
+      }
+
+      updateStatusUI('INITIALIZING...', 'bg-yellow-500 animate-pulse');
+
+      try {
+        state.peer = new Peer(customId, {
+          debug: 0,
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+          }
+        });
+
+        state.peer.on('open', (id) => {
+          state.myId = id;
+          if (onReady) onReady(id);
+        });
+
+        // Host receives incoming connections from up to 15 peers
+        state.peer.on('connection', (connection) => {
+          if (state.connections.size >= MAX_LOBBY_SIZE - 1) {
+            connection.close(); // Lobby full
+            return;
+          }
+
+          state.connections.set(connection.peer, connection);
+          updateStatusUI(`LOBBY ACTIVE (${state.connections.size + 1}/16)`, 'bg-emerald-500');
+
+          connection.on('data', (data) => {
+            handleIncomingPacket(data);
+
+            // Host relays this client's packet to all other clients
+            state.connections.forEach((conn, peerId) => {
+              if (peerId !== connection.peer && conn.open) {
+                try { conn.send(data); } catch(e){}
+              }
+            });
+          });
+
+          connection.on('close', () => {
+            state.connections.delete(connection.peer);
+            state.roster.delete(connection.peer);
+            updateRosterUI();
+            updateStatusUI(`LOBBY ACTIVE (${state.connections.size + 1}/16)`, 'bg-emerald-500');
+          });
+
+          // Send current full roster to newly joined player
+          broadcastMyState();
+        });
+
+        state.peer.on('error', (err) => {
+          console.warn('Peer error:', err);
+          updateStatusUI('OFFLINE / LOCAL', 'bg-amber-600');
+        });
+      } catch (err) {
+        console.warn('WebRTC restricted, fallback to BroadcastChannel:', err);
+      }
+    }
+
+    function handleIncomingPacket(data) {
+      if (!data || !data.id || data.id === state.myId) return;
+
+      if (data.type === 'player_update') {
+        const peer = state.roster.get(data.id) || {};
+        peer.id = data.id;
+        peer.name = data.name || 'Unknown';
+        peer.role = data.role || 'seeker';
+        peer.lat = data.lat !== undefined ? data.lat : null;
+        peer.lon = data.lon !== undefined ? data.lon : null;
+        peer.heading = data.heading || 0;
+        peer.lastSeen = Date.now();
+
+        // Calculate distance if both locations available
+        if (state.myLat !== null && state.myLon !== null && peer.lat !== null && peer.lon !== null) {
+          const meters = calculateHaversineDistance(state.myLat, state.myLon, peer.lat, peer.lon);
+          peer.distanceMeters = meters;
+          peer.distanceFeet = meters * 3.28084;
+        } else {
+          peer.distanceMeters = null;
+          peer.distanceFeet = null;
+        }
+
+        state.roster.set(data.id, peer);
+        updateRosterUI();
+      }
+    }
+
+    function broadcastMyState() {
+      const packet = {
+        type: 'player_update',
+        id: state.myId || 'local_user',
+        name: state.myName,
+        role: state.myRole,
+        lat: state.myLat,
+        lon: state.myLon,
+        heading: state.deviceHeading,
+        time: Date.now()
+      };
+
+      // 1. Host sends to all connected clients
+      if (state.isHost) {
+        state.connections.forEach((conn) => {
+          if (conn.open) {
+            try { conn.send(packet); } catch(e){}
+          }
+        });
+      }
+
+      // 2. Client sends to Host
+      if (state.clientHostConn && state.clientHostConn.open) {
+        try { state.clientHostConn.send(packet); } catch(e){}
+      }
+
+      // 3. Local mesh channel fallback
+      if (state.bc) {
+        try { state.bc.postMessage(packet); } catch(e){}
+      }
+    }
+
+    function updateStatusUI(text, lightClass) {
+      connStatusText.textContent = text;
+      connLight.className = `w-2.5 h-2.5 rounded-full ${lightClass}`;
+    }
+
+    document.getElementById('btnSaveName').addEventListener('click', () => {
+      const newName = inputPlayerName.value.trim();
+      if (newName) {
+        state.myName = newName;
+        localStorage.setItem('mc_player_name', newName);
+        showToast(`Saved name: ${newName}`);
+        broadcastMyState();
+        updateRosterUI();
       }
     });
 
-    // Orientation Support for iOS & Android
+    inputPlayerName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('btnSaveName').click();
+      }
+    });
+
+    function setMyRole(role) {
+      state.myRole = role;
+      const btnSeeker = document.getElementById('btnRoleSeeker');
+      const btnHider = document.getElementById('btnRoleHider');
+      const roleText = document.getElementById('roleIndicatorText');
+
+      if (role === 'seeker') {
+        btnSeeker.classList.add('mc-btn-green');
+        btnHider.classList.remove('mc-btn-green');
+        roleText.textContent = 'SEEKER';
+        roleText.className = 'mc-font text-[9px] text-emerald-400 font-bold';
+      } else {
+        btnHider.classList.add('mc-btn-green');
+        btnSeeker.classList.remove('mc-btn-green');
+        roleText.textContent = 'HIDER';
+        roleText.className = 'mc-font text-[9px] text-amber-400 font-bold';
+      }
+
+      showToast(`Joined team ${role.toUpperCase()}`);
+      broadcastMyState();
+      updateRosterUI();
+    }
+
+    document.getElementById('btnRoleSeeker').addEventListener('click', () => setMyRole('seeker'));
+    document.getElementById('btnRoleHider').addEventListener('click', () => setMyRole('hider'));
+
     async function requestDeviceOrientation() {
       const sourceLabel = document.getElementById('telSource');
-
-      // iOS 13+ requires explicit user permission request via gesture
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
-          const permission = await DeviceOrientationEvent.requestPermission();
-          if (permission === 'granted') {
+          const perm = await DeviceOrientationEvent.requestPermission();
+          if (perm === 'granted') {
             bindOrientationListeners();
             state.motionPermitted = true;
             document.getElementById('btnRequestOrientation').classList.add('opacity-50');
             document.getElementById('btnRequestOrientation').textContent = '🧭 COMPASS ACTIVE';
-          } else {
-            alert('Motion sensor permission was denied.');
           }
         } catch (e) {
-          console.error('Orientation permission error:', e);
+          console.warn('Orientation permission denied:', e);
         }
       } else {
-        // Standard Android / Chrome
         bindOrientationListeners();
         state.motionPermitted = true;
         document.getElementById('btnRequestOrientation').classList.add('opacity-50');
@@ -1090,21 +1053,15 @@
 
     function bindOrientationListeners() {
       const sourceLabel = document.getElementById('telSource');
-
-      // 1. Android Chrome absolute orientation event
       window.addEventListener('deviceorientationabsolute', (e) => {
         if (e.alpha !== null) {
           sourceLabel.textContent = 'Absolute (Compass)';
-          // In deviceorientationabsolute, alpha is 0 at North, 90 at West, 270 at East.
-          // Standard compass heading needs 360 - alpha:
           state.deviceHeading = (360 - e.alpha) % 360;
         }
       }, true);
 
-      // 2. iOS Safari webkitCompassHeading or fallback
       window.addEventListener('deviceorientation', (e) => {
         if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-          // iOS provides direct 0-360 true magnetic compass heading
           sourceLabel.textContent = 'iOS WebKit Compass';
           state.deviceHeading = e.webkitCompassHeading;
         } else if (e.alpha !== null && sourceLabel.textContent === 'None') {
@@ -1114,12 +1071,8 @@
       }, true);
     }
 
-    // Geolocation Support
     function requestGeolocation() {
-      if (!('geolocation' in navigator)) {
-        alert('Geolocation is not supported by your browser.');
-        return;
-      }
+      if (!('geolocation' in navigator)) return;
 
       navigator.geolocation.watchPosition(
         (pos) => {
@@ -1128,72 +1081,99 @@
           state.myAccuracy = pos.coords.accuracy;
           state.gpsPermitted = true;
 
-          // Update HUD
           document.getElementById('telMyLat').textContent = state.myLat.toFixed(5);
           document.getElementById('telMyLon').textContent = state.myLon.toFixed(5);
           document.getElementById('telAcc').textContent = `±${Math.round(state.myAccuracy)}m`;
-
           document.getElementById('btnRequestGps').classList.add('opacity-50');
           document.getElementById('btnRequestGps').textContent = '📍 GPS ACTIVE';
 
-          broadcastLocation();
+          broadcastMyState();
         },
-        (err) => {
-          console.warn('Geolocation watch error:', err.message);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 1000,
-          timeout: 10000
-        }
+        (err) => console.warn('GPS error:', err.message),
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
       );
     }
 
+    document.getElementById('btnRequestOrientation').addEventListener('click', requestDeviceOrientation);
+    document.getElementById('btnRequestGps').addEventListener('click', requestGeolocation);
+
+    function findNearestOpponent() {
+      const opponentRole = state.myRole === 'seeker' ? 'hider' : 'seeker';
+      let closest = null;
+      let minDistanceMeters = Infinity;
+
+      state.roster.forEach((peer) => {
+        if (peer.role === opponentRole && peer.lat !== null && peer.lon !== null && state.myLat !== null && state.myLon !== null) {
+          const dist = calculateHaversineDistance(state.myLat, state.myLon, peer.lat, peer.lon);
+          peer.distanceMeters = dist;
+          peer.distanceFeet = dist * 3.28084;
+
+          if (dist < minDistanceMeters) {
+            minDistanceMeters = dist;
+            closest = {
+              id: peer.id,
+              name: peer.name,
+              role: peer.role,
+              distanceMeters: dist,
+              distanceFeet: dist * 3.28084,
+              bearing: calculateBearing(state.myLat, state.myLon, peer.lat, peer.lon)
+            };
+          }
+        }
+      });
+
+      return closest;
+    }
 
     let lastTimestamp = performance.now();
 
     function updateCompassPhysics(dt) {
       let targetBearing = 0;
       let currentHeading = state.simManualHeading ? state.simHeading : state.deviceHeading;
+      let targetDistanceMeters = null;
 
       if (state.simulating) {
-        // Virtual Peer Mode: Uses real phone orientation & live GPS
+        // Virtual Simulator mode
+        targetDistanceMeters = (state.simPeerDistanceFeet / 3.28084);
         if (state.simAnchorToGps && state.simPeerLat !== null && state.simPeerLon !== null && state.myLat !== null && state.myLon !== null) {
-          // Calculate bearing & distance from real phone GPS to anchored virtual peer GPS
           targetBearing = calculateBearing(state.myLat, state.myLon, state.simPeerLat, state.simPeerLon);
-          state.distanceMeters = calculateHaversineDistance(state.myLat, state.myLon, state.simPeerLat, state.simPeerLon);
+          targetDistanceMeters = calculateHaversineDistance(state.myLat, state.myLon, state.simPeerLat, state.simPeerLon);
         } else {
-          // Fallback if GPS is not yet acquired or anchor unchecked: use relative offset bearing directly
           targetBearing = state.simPeerBearing;
-          state.distanceMeters = state.simPeerDistance;
         }
+
+        const opponentLabel = state.myRole === 'seeker' ? 'Virtual Hider' : 'Virtual Seeker';
+        state.trackedOpponent = {
+          name: opponentLabel,
+          role: state.myRole === 'seeker' ? 'hider' : 'seeker',
+          distanceMeters: targetDistanceMeters,
+          distanceFeet: targetDistanceMeters * 3.28084,
+          bearing: targetBearing
+        };
       } else {
-        // Real Peer GPS Data
-        if (state.peerLat !== null && state.peerLon !== null && state.myLat !== null && state.myLon !== null) {
-          targetBearing = calculateBearing(state.myLat, state.myLon, state.peerLat, state.peerLon);
-          state.distanceMeters = calculateHaversineDistance(state.myLat, state.myLon, state.peerLat, state.peerLon);
+        // Real multi-peer targeting: Lock onto closest opponent on other team
+        const closest = findNearestOpponent();
+        state.trackedOpponent = closest;
+
+        if (closest) {
+          targetBearing = closest.bearing;
+          targetDistanceMeters = closest.distanceMeters;
         } else {
-          // Default: When no peer is connected, target is true North (0° bearing)
-          // Facing North (currentHeading = 0°) results in (0 - 0) = 0° (pointing straight up)
+          // No opponents detected: Default point North (0°)
           targetBearing = 0;
-          state.distanceMeters = null;
+          targetDistanceMeters = null;
         }
       }
 
-      state.targetBearing = targetBearing;
+      const distFeet = targetDistanceMeters !== null ? targetDistanceMeters * 3.28084 : null;
 
-      // Convert meters to feet (1 meter = 3.28084 feet)
-      const distFeet = state.distanceMeters !== null ? state.distanceMeters * 3.28084 : null;
-
-      // NETHER SPIN MODE: When closer than 25 feet, spin uncontrollably
-      if (distFeet !== null && distFeet < 25) {
+      // NETHER SPIN MODE: When closer than 15 FEET, spin wildly!
+      if (distFeet !== null && distFeet < NETHER_SPIN_FEET) {
         state.isSpinning = true;
-        
-        // Dynamic speed variations and occasional direction flips like Minecraft's Nether compass
-        state.spinSpeed += (Math.random() - 0.5) * 700 * dt;
-        if (Math.abs(state.spinSpeed) < 380) state.spinSpeed = Math.sign(state.spinSpeed || 1) * 450;
-        if (Math.abs(state.spinSpeed) > 950) state.spinSpeed = Math.sign(state.spinSpeed) * 950;
-        if (Math.random() < 0.025) state.spinSpeed = -state.spinSpeed; // Occasional erratic reverse
+        state.spinSpeed += (Math.random() - 0.5) * 800 * dt;
+        if (Math.abs(state.spinSpeed) < 420) state.spinSpeed = Math.sign(state.spinSpeed || 1) * 480;
+        if (Math.abs(state.spinSpeed) > 1050) state.spinSpeed = Math.sign(state.spinSpeed) * 1050;
+        if (Math.random() < 0.03) state.spinSpeed = -state.spinSpeed;
 
         state.needleDisplayAngle = (state.needleDisplayAngle + state.spinSpeed * dt + 360) % 360;
         state.needleVelocity = state.spinSpeed;
@@ -1202,7 +1182,7 @@
 
       state.isSpinning = false;
 
-      // Calculate relative needle angle on device screen
+      // Angular calculation
       let rawRelativeAngle;
       if (state.invertRotation) {
         rawRelativeAngle = (currentHeading - targetBearing + state.textureOffset) % 360;
@@ -1210,25 +1190,16 @@
         rawRelativeAngle = (targetBearing - currentHeading + state.textureOffset) % 360;
       }
       rawRelativeAngle = (rawRelativeAngle + 360) % 360;
-      state.relativeAngle = rawRelativeAngle;
 
-      // Authentic Minecraft Spring Wobble Physics
+      // Spring-mass dampening
       if (state.enableSpringPhysics) {
-        // Spring Constants
         const springK = 38.0;
         const damping = 7.5;
-
-        // Angular error in range [-180, 180]
         const angleDiff = angleDifference(state.needleDisplayAngle, rawRelativeAngle);
-
-        // Add subtle random Minecraft needle quiver when close or moving
         const randomQuiver = (Math.random() - 0.5) * 1.5;
 
-        const springForce = (angleDiff * springK) + randomQuiver;
-        const dampingForce = -state.needleVelocity * damping;
-        const totalAcceleration = springForce + dampingForce;
-
-        state.needleVelocity += totalAcceleration * dt;
+        const totalAcc = (angleDiff * springK + randomQuiver) - (state.needleVelocity * damping);
+        state.needleVelocity += totalAcc * dt;
         state.needleDisplayAngle = (state.needleDisplayAngle + state.needleVelocity * dt + 360) % 360;
       } else {
         state.needleDisplayAngle = rawRelativeAngle;
@@ -1239,34 +1210,36 @@
       const dt = Math.min((now - lastTimestamp) / 1000, 0.1);
       lastTimestamp = now;
 
-      // Physics update
       updateCompassPhysics(dt);
 
-      // Quantize to 32 discrete Minecraft needle orientations for authenticity
       const FRAME_COUNT = 32;
       const step = 360.0 / FRAME_COUNT;
       const quantizedAngle = Math.round(state.needleDisplayAngle / step) * step;
 
-      // Draw compass
       compassRenderer.draw(ctx, quantizedAngle);
 
-      // Stream to Physical Raspberry Pi Compass over Web Bluetooth
-      const frameIndex = Math.floor(((quantizedAngle % 360) + 360) % 360 / (360.0 / FRAME_COUNT)) % FRAME_COUNT;
+      // Stream to Raspberry Pi over Web Bluetooth
+      const frameIndex = Math.floor(((quantizedAngle % 360) + 360) % 360 / step) % FRAME_COUNT;
       sendBleNeedleUpdate(frameIndex, now);
 
-      // Update text indicators
+      // Overlay text updates
       needleDegText.textContent = state.isSpinning ? 'SPIN' : `${Math.round(state.needleDisplayAngle)}°`;
       cardinalText.textContent = getCardinal(state.deviceHeading);
-      bearingText.textContent = state.isSpinning ? '???' : `${Math.round(state.targetBearing)}°`;
+      bearingText.textContent = state.isSpinning ? '???' : (state.trackedOpponent ? `${Math.round(state.trackedOpponent.bearing)}°` : '0° (N)');
       headingText.textContent = `${Math.round(state.deviceHeading)}°`;
 
-      // Proximity Tier Display (Feet thresholds)
-      if (state.distanceMeters !== null) {
-        const feet = state.distanceMeters * 3.28084;
+      // HUD Proximity and Targeting
+      if (state.trackedOpponent) {
+        const oppName = state.trackedOpponent.name;
+        const oppRole = state.trackedOpponent.role.toUpperCase();
+        targetNameLabel.textContent = state.myRole === 'seeker' ? `TRACKING: ${oppName} (${oppRole})` : `EVADING: ${oppName} (${oppRole})`;
+        document.getElementById('telOpponentName').textContent = `${oppName} (${oppRole})`;
+
+        const feet = state.trackedOpponent.distanceFeet;
         let tierText = '';
         let tierClass = '';
 
-        if (feet < 25) {
+        if (feet < NETHER_SPIN_FEET) {
           if (state.myRole === 'seeker') {
             tierText = '🎯 SEEK 🎯';
             tierClass = 'text-emerald-400 animate-pulse text-base tracking-widest drop-shadow-[0_0_8px_rgba(52,211,153,0.9)]';
@@ -1292,32 +1265,29 @@
         }
 
         distanceMainLabel.innerHTML = `<span class="${tierClass} font-bold">${tierText}</span>`;
-      } else if (!state.isConnected) {
+      } else {
+        const oppType = state.myRole === 'seeker' ? 'HIDERS' : 'SEEKERS';
+        targetNameLabel.textContent = `WAITING FOR ${oppType}...`;
         distanceMainLabel.innerHTML = `<span class="text-stone-400 text-xs">POINTING NORTH (IDLE)</span>`;
+        document.getElementById('telOpponentName').textContent = 'None';
       }
 
       requestAnimationFrame(renderLoop);
     }
 
-
-    // Tab Drawer Switching Logic
     const tabs = {
-      connect: { btn: document.getElementById('tabConnectBtn'), panel: panelConnect },
-      telemetry: { btn: document.getElementById('tabTelemetryBtn'), panel: panelTelemetry },
-      sim: { btn: document.getElementById('tabSimBtn'), panel: panelSim }
+      connect: { btn: document.getElementById('tabConnectBtn'), panel: document.getElementById('panelConnect') },
+      roster: { btn: document.getElementById('tabRosterBtn'), panel: document.getElementById('panelRoster') },
+      telemetry: { btn: document.getElementById('tabTelemetryBtn'), panel: document.getElementById('panelTelemetry') },
+      sim: { btn: document.getElementById('tabSimBtn'), panel: document.getElementById('panelSim') }
     };
 
     function toggleTab(activeKey) {
       Object.entries(tabs).forEach(([key, { btn, panel }]) => {
         if (key === activeKey) {
           const isClosed = panel.classList.contains('hidden');
-          if (isClosed) {
-            panel.classList.remove('hidden');
-            btn.classList.add('mc-btn-green');
-          } else {
-            panel.classList.add('hidden');
-            btn.classList.remove('mc-btn-green');
-          }
+          panel.classList.toggle('hidden', !isClosed);
+          btn.classList.toggle('mc-btn-green', isClosed);
         } else {
           panel.classList.add('hidden');
           btn.classList.remove('mc-btn-green');
@@ -1326,25 +1296,27 @@
     }
 
     document.getElementById('tabConnectBtn').addEventListener('click', () => toggleTab('connect'));
+    document.getElementById('tabRosterBtn').addEventListener('click', () => toggleTab('roster'));
     document.getElementById('tabTelemetryBtn').addEventListener('click', () => toggleTab('telemetry'));
     document.getElementById('tabSimBtn').addEventListener('click', () => toggleTab('sim'));
 
-    document.getElementById('closeConnectPanel').addEventListener('click', () => panelConnect.classList.add('hidden'));
-    document.getElementById('closeTelemetryPanel').addEventListener('click', () => panelTelemetry.classList.add('hidden'));
-    document.getElementById('closeSimPanel').addEventListener('click', () => panelSim.classList.add('hidden'));
+    document.getElementById('closeConnectPanel').addEventListener('click', () => tabs.connect.panel.classList.add('hidden'));
+    document.getElementById('closeRosterPanel').addEventListener('click', () => tabs.roster.panel.classList.add('hidden'));
+    document.getElementById('closeTelemetryPanel').addEventListener('click', () => tabs.telemetry.panel.classList.add('hidden'));
+    document.getElementById('closeSimPanel').addEventListener('click', () => tabs.sim.panel.classList.add('hidden'));
 
-    // Host / Join Button Views
+    // Host & Join buttons
     const btnModeHost = document.getElementById('btnModeHost');
     const btnModeJoin = document.getElementById('btnModeJoin');
+    const hostSection = document.getElementById('hostSection');
+    const joinSection = document.getElementById('joinSection');
 
     btnModeHost.addEventListener('click', () => {
       hostSection.classList.remove('hidden');
       joinSection.classList.add('hidden');
       btnModeHost.classList.add('mc-btn-green');
       btnModeJoin.classList.remove('mc-btn-green');
-      if (!state.roomCode) {
-        createHostRoom();
-      }
+      if (!state.roomCode) createHostLobby();
     });
 
     btnModeJoin.addEventListener('click', () => {
@@ -1356,198 +1328,18 @@
 
     document.getElementById('btnSubmitJoin').addEventListener('click', () => {
       const code = document.getElementById('inputRoomCode').value;
-      if (code) {
-        joinHostRoom(code);
-      }
+      if (code) joinLobby(code);
     });
 
-    // Copy Invite URL
     document.getElementById('btnCopyInvite').addEventListener('click', () => {
       const url = new URL(window.location.href);
       url.searchParams.set('room', state.roomCode);
-      
-      const dummy = document.createElement("input");
-      document.body.appendChild(dummy);
-      dummy.value = url.toString();
-      dummy.select();
-      document.execCommand("copy");
-      document.body.removeChild(dummy);
-
-      copyFeedback.classList.remove('hidden');
-      setTimeout(() => copyFeedback.classList.add('hidden'), 2500);
-    });
-
-    // Mobile Sensor Grant Buttons
-    document.getElementById('btnRequestOrientation').addEventListener('click', () => {
-      requestDeviceOrientation();
-    });
-    document.getElementById('btnRequestGps').addEventListener('click', () => {
-      requestGeolocation();
-    });
-
-    // Role Selection Buttons
-    document.getElementById('btnRoleSeeker').addEventListener('click', () => {
-      setMyRole('seeker', true);
-    });
-    document.getElementById('btnRoleHider').addEventListener('click', () => {
-      setMyRole('hider', true);
-    });
-
-    // Calibration & Offset Controls
-    const sliderOffset = document.getElementById('sliderOffset');
-    const offsetValText = document.getElementById('offsetValText');
-    sliderOffset.addEventListener('input', (e) => {
-      state.textureOffset = parseFloat(e.target.value);
-      offsetValText.textContent = `${state.textureOffset}°`;
-    });
-
-    document.getElementById('btnFlip180').addEventListener('click', () => {
-      state.textureOffset = (state.textureOffset + 180) % 360;
-      sliderOffset.value = state.textureOffset;
-      offsetValText.textContent = `${state.textureOffset}°`;
-    });
-
-    document.getElementById('checkInvertRot').addEventListener('change', (e) => {
-      state.invertRotation = e.target.checked;
-    });
-
-    document.getElementById('checkNeedleJitter').addEventListener('change', (e) => {
-      state.enableSpringPhysics = e.target.checked;
-    });
-
-    // Custom Sprite File Upload Listener
-    const inputSpriteFile = document.getElementById('inputSpriteFile');
-    if (inputSpriteFile) {
-      inputSpriteFile.addEventListener('change', (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            compassRenderer.loadSprite(ev.target.result);
-          };
-          reader.readAsDataURL(file);
-        }
+      navigator.clipboard.writeText(url.toString()).then(() => {
+        showToast('Invite link copied!');
       });
-    }
-
-    // Simulation Sliders
-    const simHeadingSlider = document.getElementById('simHeadingSlider');
-    const simBearingSlider = document.getElementById('simBearingSlider');
-    const simDistSlider = document.getElementById('simDistSlider');
-    const btnToggleSimMode = document.getElementById('btnToggleSimMode');
-
-    function refreshVirtualPeerCoordinates() {
-      if (!state.simulating) return;
-
-      // Default baseline location if user GPS is not yet permitted (e.g., Dallas default or 0,0)
-      const baseLat = state.myLat !== null ? state.myLat : 32.9483;
-      const baseLon = state.myLon !== null ? state.myLon : -96.7299;
-
-      const projected = calculateDestinationPoint(baseLat, baseLon, state.simPeerDistance, state.simPeerBearing);
-      state.simPeerLat = projected.lat;
-      state.simPeerLon = projected.lon;
-
-      // Reflect in telemetry HUD
-      document.getElementById('telPeerLat').textContent = state.simPeerLat ? state.simPeerLat.toFixed(5) : '--';
-      document.getElementById('telPeerLon').textContent = state.simPeerLon ? state.simPeerLon.toFixed(5) : '--';
-    }
-
-    simBearingSlider.addEventListener('input', (e) => {
-      state.simPeerBearing = parseFloat(e.target.value);
-      document.getElementById('simBearingVal').textContent = `${state.simPeerBearing}° (${getCardinal(state.simPeerBearing)})`;
-      refreshVirtualPeerCoordinates();
     });
 
-    simDistSlider.addEventListener('input', (e) => {
-      state.simPeerDistance = parseFloat(e.target.value);
-      const feet = Math.round(state.simPeerDistance * 3.28084);
-      let tierLabel = '';
-      if (feet < 25) {
-        tierLabel = state.myRole === 'seeker' ? '(SEEK - Nether Spin)' : '(HIDE - Nether Spin)';
-      } else if (feet <= 500) {
-        tierLabel = '(Close)';
-      } else if (feet <= 1000) {
-        tierLabel = '(Closing in)';
-      } else if (feet <= 2500) {
-        tierLabel = '(Moderate)';
-      } else if (feet <= 5000) {
-        tierLabel = '(Far)';
-      } else {
-        tierLabel = '(Very Far)';
-      }
-
-      document.getElementById('simDistVal').textContent = `${feet} ft ${tierLabel}`;
-      refreshVirtualPeerCoordinates();
-    });
-
-    function applyPreset(bearingDeg, dist = 50) {
-      state.simPeerBearing = bearingDeg;
-      state.simPeerDistance = dist;
-      simBearingSlider.value = bearingDeg;
-      simDistSlider.value = dist;
-      
-      const feet = Math.round(dist * 3.28084);
-      document.getElementById('simBearingVal').textContent = `${bearingDeg}° (${getCardinal(bearingDeg)})`;
-      document.getElementById('simDistVal').textContent = `${feet} ft`;
-
-      if (!state.simulating) {
-        btnToggleSimMode.click();
-      } else {
-        refreshVirtualPeerCoordinates();
-      }
-    }
-
-    document.getElementById('btnPresetN').addEventListener('click', () => applyPreset(0, 50));
-    document.getElementById('btnPresetE').addEventListener('click', () => applyPreset(90, 50));
-    document.getElementById('btnPresetS').addEventListener('click', () => applyPreset(180, 50));
-    document.getElementById('btnPresetW').addEventListener('click', () => applyPreset(270, 50));
-
-    document.getElementById('checkAnchorGps').addEventListener('change', (e) => {
-      state.simAnchorToGps = e.target.checked;
-      refreshVirtualPeerCoordinates();
-    });
-
-    const checkManualHeading = document.getElementById('checkManualHeading');
-    const manualHeadingBox = document.getElementById('manualHeadingBox');
-    checkManualHeading.addEventListener('change', (e) => {
-      state.simManualHeading = e.target.checked;
-      manualHeadingBox.classList.toggle('hidden', !e.target.checked);
-    });
-
-    simHeadingSlider.addEventListener('input', (e) => {
-      state.simHeading = parseFloat(e.target.value);
-      document.getElementById('simHeadingVal').textContent = `${state.simHeading}°`;
-    });
-
-    btnToggleSimMode.addEventListener('click', () => {
-      state.simulating = !state.simulating;
-      if (state.simulating) {
-        btnToggleSimMode.textContent = '❌ STOP VIRTUAL PEER';
-        btnToggleSimMode.classList.remove('mc-btn-green');
-        btnToggleSimMode.classList.add('bg-red-800');
-        updateTargetHudRole();
-        refreshVirtualPeerCoordinates();
-        updateStatusUI('SIMULATING VIRTUAL PEER', 'bg-blue-500');
-      } else {
-        btnToggleSimMode.textContent = '🎯 SPAWN VIRTUAL PEER';
-        btnToggleSimMode.classList.add('mc-btn-green');
-        btnToggleSimMode.classList.remove('bg-red-800');
-        updateTargetHudRole();
-        updateStatusUI(state.isConnected ? 'CONNECTED TO PEER' : 'DISCONNECTED', state.isConnected ? 'bg-green-500' : 'bg-yellow-500');
-        state.simPeerLat = null;
-        state.simPeerLon = null;
-      }
-    });
-
-    // Help Modal
-    const helpModal = document.getElementById('helpModal');
-    document.getElementById('helpModalBtn').addEventListener('click', () => helpModal.classList.remove('hidden'));
-    document.getElementById('closeHelpModal').addEventListener('click', () => helpModal.classList.add('hidden'));
-    document.getElementById('btnCloseHelpModalBtn').addEventListener('click', () => helpModal.classList.add('hidden'));
-
-    /* =========================================================
-     * WEB BLUETOOTH INTEGRATION FOR RASPBERRY PI
-     * ========================================================= */
+    // Hardware Bluetooth (Raspberry Pi)
     const BLE_SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0";
     const BLE_CHAR_UUID    = "12345678-1234-5678-1234-56789abcdef1";
     const btnConnectBle = document.getElementById('btnConnectBle');
@@ -1555,14 +1347,12 @@
 
     async function connectBleHardware() {
       if (!navigator.bluetooth) {
-        alert("Web Bluetooth is not supported in this browser. Please use Chrome on Android or a WebBLE browser on iOS.");
+        showToast("Web Bluetooth requires Chrome on Android or WebBLE on iOS.");
         return;
       }
 
       try {
         bleStatusBadge.textContent = "SCANNING...";
-        bleStatusBadge.className = "text-amber-400 font-mono text-[9px] animate-pulse";
-
         const device = await navigator.bluetooth.requestDevice({
           filters: [{ name: "MC-Compass" }],
           optionalServices: [BLE_SERVICE_UUID]
@@ -1573,7 +1363,6 @@
 
         bleStatusBadge.textContent = "CONNECTING...";
         const server = await device.gatt.connect();
-
         const service = await server.getPrimaryService(BLE_SERVICE_UUID);
         state.bleCharacteristic = await service.getCharacteristic(BLE_CHAR_UUID);
         state.bleConnected = true;
@@ -1582,8 +1371,9 @@
         bleStatusBadge.className = "text-emerald-400 font-mono text-[9px] font-bold";
         btnConnectBle.textContent = "DISCONNECT PI";
         btnConnectBle.classList.add('mc-btn-green');
+        showToast("Connected to Raspberry Pi!");
       } catch (err) {
-        console.warn("BLE Connection cancelled or failed:", err);
+        console.warn("BLE error:", err);
         onBleDisconnected();
       }
     }
@@ -1608,15 +1398,12 @@
 
     function sendBleNeedleUpdate(frameIndex, now) {
       if (!state.bleConnected || !state.bleCharacteristic) return;
-
-      // Throttle BLE writes to ~15-20 Hz (every 50ms) and skip redundant frames unless spinning
       if (now - state.lastBleTransmitTime < 50) return;
       if (!state.isSpinning && state.lastSentFrameIdx === frameIndex) return;
 
       state.lastBleTransmitTime = now;
       state.lastSentFrameIdx = frameIndex;
 
-      // Send 1 byte: frame index (0 - 31)
       const payload = new Uint8Array([frameIndex]);
       try {
         if (state.bleCharacteristic.writeValueWithoutResponse) {
@@ -1624,35 +1411,129 @@
         } else {
           state.bleCharacteristic.writeValue(payload);
         }
-      } catch (e) {
-        console.warn("BLE Write error:", e);
+      } catch(e){}
+    }
+
+    // Calibration sliders
+    document.getElementById('sliderOffset').addEventListener('input', (e) => {
+      state.textureOffset = parseFloat(e.target.value);
+      document.getElementById('offsetValText').textContent = `${state.textureOffset}°`;
+    });
+
+    document.getElementById('btnFlip180').addEventListener('click', () => {
+      state.textureOffset = (state.textureOffset + 180) % 360;
+      document.getElementById('sliderOffset').value = state.textureOffset;
+      document.getElementById('offsetValText').textContent = `${state.textureOffset}°`;
+    });
+
+    document.getElementById('checkInvertRot').addEventListener('change', (e) => {
+      state.invertRotation = e.target.checked;
+    });
+
+    document.getElementById('checkNeedleJitter').addEventListener('change', (e) => {
+      state.enableSpringPhysics = e.target.checked;
+    });
+
+    // Virtual Simulator handlers
+    const simBearingSlider = document.getElementById('simBearingSlider');
+    const simDistSlider = document.getElementById('simDistSlider');
+    const btnToggleSimMode = document.getElementById('btnToggleSimMode');
+
+    function refreshVirtualPeerCoordinates() {
+      if (!state.simulating) return;
+      const baseLat = state.myLat !== null ? state.myLat : 32.9483;
+      const baseLon = state.myLon !== null ? state.myLon : -96.7299;
+      const distMeters = state.simPeerDistanceFeet / 3.28084;
+
+      const projected = calculateDestinationPoint(baseLat, baseLon, distMeters, state.simPeerBearing);
+      state.simPeerLat = projected.lat;
+      state.simPeerLon = projected.lon;
+    }
+
+    simBearingSlider.addEventListener('input', (e) => {
+      state.simPeerBearing = parseFloat(e.target.value);
+      document.getElementById('simBearingVal').textContent = `${state.simPeerBearing}° (${getCardinal(state.simPeerBearing)})`;
+      refreshVirtualPeerCoordinates();
+    });
+
+    simDistSlider.addEventListener('input', (e) => {
+      state.simPeerDistanceFeet = parseFloat(e.target.value);
+      let tier = '';
+      if (state.simPeerDistanceFeet < NETHER_SPIN_FEET) tier = state.myRole === 'seeker' ? '(SEEK - Spin)' : '(HIDE - Spin)';
+      else if (state.simPeerDistanceFeet <= 500) tier = '(Close)';
+      else if (state.simPeerDistanceFeet <= 1000) tier = '(Closing in)';
+      else if (state.simPeerDistanceFeet <= 2500) tier = '(Moderate)';
+      else tier = '(Far)';
+
+      document.getElementById('simDistVal').textContent = `${Math.round(state.simPeerDistanceFeet)} ft ${tier}`;
+      refreshVirtualPeerCoordinates();
+    });
+
+    function applyPreset(feet, bearingDeg = 0) {
+      state.simPeerBearing = bearingDeg;
+      state.simPeerDistanceFeet = feet;
+      simBearingSlider.value = bearingDeg;
+      simDistSlider.value = feet;
+      document.getElementById('simBearingVal').textContent = `${bearingDeg}° (${getCardinal(bearingDeg)})`;
+      document.getElementById('simDistVal').textContent = `${feet} ft`;
+
+      if (!state.simulating) {
+        btnToggleSimMode.click();
+      } else {
+        refreshVirtualPeerCoordinates();
       }
     }
 
+    document.getElementById('btnPresetNether').addEventListener('click', () => applyPreset(10, 0));
+    document.getElementById('btnPresetN').addEventListener('click', () => applyPreset(164, 0));
+    document.getElementById('btnPresetE').addEventListener('click', () => applyPreset(164, 90));
+    document.getElementById('btnPresetS').addEventListener('click', () => applyPreset(164, 180));
+
+    btnToggleSimMode.addEventListener('click', () => {
+      state.simulating = !state.simulating;
+      if (state.simulating) {
+        btnToggleSimMode.textContent = '❌ STOP SIMULATOR';
+        btnToggleSimMode.classList.remove('mc-btn-green');
+        btnToggleSimMode.classList.add('mc-btn-red');
+        refreshVirtualPeerCoordinates();
+        showToast("Virtual opponent active");
+      } else {
+        btnToggleSimMode.textContent = '🎯 SPAWN VIRTUAL OPPONENT';
+        btnToggleSimMode.classList.add('mc-btn-green');
+        btnToggleSimMode.classList.remove('mc-btn-red');
+        state.simPeerLat = null;
+        state.simPeerLon = null;
+        showToast("Virtual opponent stopped");
+      }
+    });
+
+    // Modals
+    const helpModal = document.getElementById('helpModal');
+    document.getElementById('helpModalBtn').addEventListener('click', () => helpModal.classList.remove('hidden'));
+    document.getElementById('closeHelpModal').addEventListener('click', () => helpModal.classList.add('hidden'));
+    document.getElementById('btnCloseHelpModalBtn').addEventListener('click', () => helpModal.classList.add('hidden'));
+
+    // Boot sequence
     window.addEventListener('DOMContentLoaded', () => {
-      // Periodic Telemetry Sync over WebRTC
+      updateRosterUI();
+
       setInterval(() => {
-        if (state.isConnected) {
-          broadcastLocation();
+        if (state.isConnected || state.isHost) {
+          broadcastMyState();
         }
       }, 500);
 
-      // Check if opened via room invite link (?room=CODE)
       const params = new URLSearchParams(window.location.search);
       const roomParam = params.get('room');
-
       if (roomParam) {
-        // Auto-join room specified in URL
         document.getElementById('inputRoomCode').value = roomParam.toUpperCase();
         toggleTab('connect');
         btnModeJoin.click();
-        joinHostRoom(roomParam);
+        joinLobby(roomParam);
       } else {
-        // Default to hosting view
-        createHostRoom();
+        createHostLobby();
       }
 
-      // Start Animation Loop
       requestAnimationFrame(renderLoop);
     });
   </script>
