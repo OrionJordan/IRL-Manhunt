@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>IRL Manhunt • 16-Player Peer Compass Tracker</title>
-  
+  <title>IRL Manhunt • Decentralized 16-Player Compass</title>
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- PeerJS for WebRTC Mesh Networking -->
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <!-- QRCode.js for mobile room joining -->
+  <!-- MQTT.js for Hostless, High-Speed Realtime Pub/Sub Mesh -->
+  <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+  <!-- QRCode.js for instant mobile room pairing -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Google Fonts: Press Start 2P & Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -41,7 +41,6 @@
       text-shadow: 2px 2px 0px #3f3200;
     }
 
-    /* Pixelated canvas rendering */
     canvas.pixelated {
       image-rendering: -moz-crisp-edges;
       image-rendering: -webkit-crisp-edges;
@@ -49,7 +48,6 @@
       image-rendering: crisp-edges;
     }
 
-    /* Minecraft UI Button styling */
     .mc-btn {
       position: relative;
       font-family: var(--mc-font);
@@ -105,7 +103,6 @@
       filter: grayscale(80%);
     }
 
-    /* Minecraft Item Frame Bevel */
     .mc-item-frame {
       background: #4a3420;
       border: 5px solid #281a0e;
@@ -124,7 +121,6 @@
       pointer-events: none;
     }
 
-    /* Minecraft Tooltip Container */
     .mc-tooltip {
       background: rgba(16, 0, 16, 0.94);
       border: 2px solid #28045a;
@@ -170,13 +166,22 @@
       <button id="btnSaveName" class="mc-btn px-2 py-1 text-[8px]">SAVE</button>
     </div>
 
-    <!-- Peer Connection Pill -->
-    <div id="connBadge" class="w-full py-1.5 px-3 bg-stone-900/90 border-2 border-stone-700 flex items-center justify-between rounded-sm">
-      <div class="flex items-center gap-2">
-        <span id="connLight" class="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span>
-        <span id="connStatusText" class="mc-font text-[9px] text-stone-300">DISCONNECTED</span>
+    <!-- Connection & Room Leader Bar -->
+    <div id="connBadge" class="w-full py-1.5 px-3 bg-stone-900/90 border-2 border-stone-700 flex flex-col gap-1 rounded-sm">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span id="connLight" class="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span>
+          <span id="connStatusText" class="mc-font text-[9px] text-stone-300">DISCONNECTED</span>
+        </div>
+        <div id="roomCodeDisplay" class="mc-font text-[9px] text-yellow-300 tracking-wider">ROOM: ----</div>
       </div>
-      <div id="roomCodeDisplay" class="mc-font text-[9px] text-yellow-300 tracking-wider">ROOM: ----</div>
+      <div class="flex items-center justify-between border-t border-stone-800 pt-1 text-[9px]">
+        <div class="flex items-center gap-1">
+          <span class="text-stone-400">HOST:</span>
+          <span id="hostLeaderName" class="mc-font text-[8px] text-amber-300 font-bold">NONE</span>
+        </div>
+        <div id="myHostTag" class="mc-font text-[8px] text-emerald-400 font-bold hidden">👑 YOU ARE HOST</div>
+      </div>
     </div>
 
     <!-- Team Selection Bar (Independent Choice) -->
@@ -242,7 +247,7 @@
       <button id="tabSimBtn" class="mc-btn py-2 text-[8px]">SIM</button>
     </div>
 
-    <!-- PANEL 1: Connection & Room Pairing Drawer -->
+    <!-- PANEL 1: Connection & Hostless Room Pairing Drawer -->
     <div id="panelConnect" class="bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2">
       <div class="flex items-center justify-between">
         <span class="mc-font text-[9px] text-stone-400 uppercase">16-Player Match Lobby</span>
@@ -251,11 +256,11 @@
 
       <!-- Mode Selector -->
       <div class="grid grid-cols-2 gap-2 mt-1">
-        <button id="btnModeHost" class="mc-btn mc-btn-green py-2 text-[9px]">1. CREATE LOBBY</button>
-        <button id="btnModeJoin" class="mc-btn py-2 text-[9px]">2. JOIN LOBBY</button>
+        <button id="btnModeHost" class="mc-btn mc-btn-green py-2 text-[9px]">1. CREATE ROOM</button>
+        <button id="btnModeJoin" class="mc-btn py-2 text-[9px]">2. JOIN ROOM</button>
       </div>
 
-      <!-- Host View -->
+      <!-- Create View -->
       <div id="hostSection" class="hidden flex flex-col items-center gap-2 pt-2 border-t border-stone-800">
         <div class="text-center">
           <p class="text-[11px] text-stone-300">Invite up to 15 other players via QR or code:</p>
@@ -271,18 +276,18 @@
 
       <!-- Join View -->
       <div id="joinSection" class="hidden flex flex-col gap-2 pt-2 border-t border-stone-800">
-        <label class="text-[10px] text-stone-300 font-mono">Enter Host Room Code:</label>
+        <label class="text-[10px] text-stone-300 font-mono">Enter Room Code:</label>
         <div class="flex gap-2">
-          <input id="inputRoomCode" type="text" maxlength="6" placeholder="e.g. 7X4K92" 
+          <input id="inputRoomCode" type="text" maxlength="8" placeholder="e.g. NETHER" 
                  class="flex-1 bg-stone-950 border-2 border-stone-700 px-3 py-1.5 text-yellow-400 uppercase mc-font text-xs tracking-wider outline-none focus:border-yellow-500">
           <button id="btnSubmitJoin" class="mc-btn mc-btn-green px-4 py-2 text-[9px]">CONNECT</button>
         </div>
-        <p class="text-[9px] text-stone-400 italic">Up to 16 players can join the same host room over WebRTC.</p>
+        <p class="text-[9px] text-stone-400 italic">No host phone required—if anyone's phone sleeps, the room stays alive!</p>
       </div>
     </div>
 
-    <!-- PANEL 2: Roster Drawer (Seeker vs Hider team list) -->
-    <div id="panelRoster" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2.5 max-h-72 overflow-y-auto">
+    <!-- PANEL 2: Roster Drawer (Seeker vs Hider with live sensor status) -->
+    <div id="panelRoster" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2.5 max-h-80 overflow-y-auto">
       <div class="flex items-center justify-between border-b border-stone-800 pb-1">
         <span class="mc-font text-[9px] text-yellow-400 uppercase">Live Player Roster (<span id="rosterCount">1</span>/16)</span>
         <button id="closeRosterPanel" class="text-xs text-stone-400 hover:text-white px-1 font-bold">✕</button>
@@ -293,9 +298,9 @@
         <div class="bg-black/40 p-2 border border-emerald-900/60 rounded-sm">
           <div class="mc-font text-[8px] text-emerald-400 mb-1.5 flex justify-between">
             <span>🎯 SEEKERS (<span id="countSeekers">0</span>)</span>
-            <span class="text-stone-400 text-[7px]">CHASING HIDER</span>
+            <span class="text-stone-400 text-[7px]">CHASING HIDERS</span>
           </div>
-          <div id="listSeekers" class="flex flex-col gap-1 font-mono text-[9px] text-stone-300">
+          <div id="listSeekers" class="flex flex-col gap-1.5 font-mono text-[9px] text-stone-300">
             <!-- Dynamically populated -->
           </div>
         </div>
@@ -304,9 +309,9 @@
         <div class="bg-black/40 p-2 border border-amber-900/60 rounded-sm">
           <div class="mc-font text-[8px] text-amber-400 mb-1.5 flex justify-between">
             <span>🏃 HIDERS (<span id="countHiders">0</span>)</span>
-            <span class="text-stone-400 text-[7px]">EVADING SEEKER</span>
+            <span class="text-stone-400 text-[7px]">EVADING SEEKERS</span>
           </div>
-          <div id="listHiders" class="flex flex-col gap-1 font-mono text-[9px] text-stone-300">
+          <div id="listHiders" class="flex flex-col gap-1.5 font-mono text-[9px] text-stone-300">
             <!-- Dynamically populated -->
           </div>
         </div>
@@ -371,7 +376,7 @@
       </div>
     </div>
 
-    <!-- PANEL 4: Simulator (Virtual Peer Location with Live Phone Sensors) -->
+    <!-- PANEL 4: Simulator Drawer -->
     <div id="panelSim" class="hidden bg-stone-900 border-2 border-stone-700 p-3 rounded-none flex flex-col gap-2.5">
       <div class="flex items-center justify-between border-b border-stone-800 pb-1">
         <span class="mc-font text-[9px] text-yellow-400 uppercase">Virtual Opponent Simulator</span>
@@ -379,15 +384,13 @@
       </div>
       
       <p class="text-[10px] text-stone-300 leading-tight">
-        Spawns a mock opponent so you can test using your phone's real compass & GPS without waiting for others.
+        Spawns a mock opponent to test your phone's real compass & GPS without needing other players.
       </p>
 
-      <!-- Toggle Spawn Button -->
       <button id="btnToggleSimMode" class="mc-btn mc-btn-green py-2 text-[10px] font-bold tracking-wider">
         🎯 SPAWN VIRTUAL OPPONENT
       </button>
 
-      <!-- Quick Preset Buttons -->
       <div class="flex flex-col gap-1">
         <span class="text-[10px] text-stone-400 font-mono">Quick Distance Presets:</span>
         <div class="grid grid-cols-4 gap-1">
@@ -398,7 +401,6 @@
         </div>
       </div>
 
-      <!-- Sliders for Custom Virtual Location -->
       <div class="flex flex-col gap-1.5 text-[10px] pt-1 border-t border-stone-800">
         <div class="flex justify-between">
           <span>Bearing from You:</span>
@@ -412,7 +414,6 @@
         </div>
         <input id="simDistSlider" type="range" min="3" max="500" value="50" class="w-full accent-green-400 cursor-pointer">
 
-        <!-- Anchored GPS & Desktop Overrides -->
         <label class="flex items-center gap-2 text-[10px] text-stone-300 cursor-pointer mt-1">
           <input type="checkbox" id="checkAnchorGps" checked class="accent-yellow-400">
           <span>Anchor to GPS (walk around the virtual player)</span>
@@ -444,10 +445,11 @@
       </div>
       <ol class="text-xs space-y-2 list-decimal list-inside text-stone-300">
         <li><strong>Set your Name:</strong> Enter your callsign in the top box and tap <em>SAVE</em>.</li>
-        <li><strong>Form a Lobby:</strong> Player 1 taps <em>Create Lobby</em>. Up to 15 other players join using the QR code or 6-digit room code.</li>
-        <li><strong>Choose Teams:</strong> Tap <em>SEEKER</em> or <em>HIDER</em>. You can have any team distribution (e.g., 3 Seekers vs. 1 Hider).</li>
-        <li><strong>Lock Onto Opponents:</strong> Your compass automatically points directly to the <strong>physically closest opponent</strong> on the other team.</li>
-        <li><strong>15-Foot Nether Spin:</strong> When you get within 15 feet of your target, the needle enters erratic Nether spin! Seekers see <strong>SEEK</strong> and Hiders see <strong>HIDE</strong>!</li>
+        <li><strong>Room Lobby:</strong> Anyone can tap <em>CREATE ROOM</em> or enter a room code. The room runs completely hostless over an instant decentralized mesh!</li>
+        <li><strong>Host Badge:</strong> The player who creates the room is badged with <strong>👑 HOST</strong> so everyone knows who the match leader is.</li>
+        <li><strong>Compass & GPS:</strong> Tap <em>ENABLE COMPASS</em> and <em>ENABLE GPS</em> so your position and phone heading stream to opponents.</li>
+        <li><strong>Targeting:</strong> The compass points directly to the <strong>physically closest opponent</strong> on the other team.</li>
+        <li><strong>15-Foot Nether Spin:</strong> Within 15 feet of an opponent, the needle spins wildly! Seekers see <strong>SEEK</strong> and Hiders see <strong>HIDE</strong>!</li>
       </ol>
       <button id="btnCloseHelpModalBtn" class="mc-btn py-1.5 text-[9px]">READY</button>
     </div>
@@ -460,36 +462,43 @@
 
   <script>
     /* =========================================================
-     * IRL MANHUNT - 16-PLAYER MESH TRACKER
-     * Single-file standalone P2P WebRTC Tracker
+     * IRL MANHUNT - DECENTRALIZED 16-PLAYER TRACKER
+     * Hostless Realtime Pub/Sub Mesh with Zero Relays
      * ========================================================= */
 
     const MAX_LOBBY_SIZE = 16;
     const NETHER_SPIN_FEET = 15; // Nether spin activates closer than 15 feet
+    const STALE_TIMEOUT_MS = 4500; // Purge disconnected players after 4.5 seconds of silence
 
-    // Saved player name
+    // Cryptographically permanent Player UUID (prevents duplicate players on reconnect)
+    let persistentUUID = localStorage.getItem('mc_player_uuid');
+    if (!persistentUUID) {
+      persistentUUID = 'p_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+      localStorage.setItem('mc_player_uuid', persistentUUID);
+    }
+
     const savedName = localStorage.getItem('mc_player_name') || `Player_${Math.floor(100 + Math.random() * 900)}`;
 
     const state = {
       // Identity
-      myId: null,
+      myId: persistentUUID,
       myName: savedName,
       myRole: 'seeker', // 'seeker' or 'hider'
+      isRoomCreator: false,
+      hostName: 'None',
+      hostId: null,
 
-      // Room & WebRTC Networking
-      peer: null,
-      connections: new Map(), // Host tracks connection objects to clients: peerId -> conn
-      clientHostConn: null,   // Client's single connection to Host
+      // Hostless Real-time Mesh Networking
+      mqttClient: null,
       roomCode: null,
-      isHost: false,
       isConnected: false,
       bc: null,
 
-      // 16-Player Roster: peerId -> { id, name, role, lat, lon, heading, lastSeen, distance }
+      // 16-Player Roster: peerId -> { id, name, role, lat, lon, heading, hasGps, hasHeading, accuracy, lastSeen, isHost }
       roster: new Map(),
 
-      // Closest Opponent
-      trackedOpponent: null, // { id, name, role, distanceMeters, bearing }
+      // Closest Opponent Tracking
+      trackedOpponent: null,
 
       // Local Sensors
       myLat: null,
@@ -517,7 +526,7 @@
 
       // Virtual Simulation Mode
       simulating: false,
-      simPeerDistanceFeet: 164, // ~50m
+      simPeerDistanceFeet: 164,
       simPeerBearing: 0,
       simPeerLat: null,
       simPeerLon: null,
@@ -532,6 +541,8 @@
     const connLight = document.getElementById('connLight');
     const connStatusText = document.getElementById('connStatusText');
     const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+    const hostLeaderName = document.getElementById('hostLeaderName');
+    const myHostTag = document.getElementById('myHostTag');
     const targetNameLabel = document.getElementById('targetNameLabel');
     const distanceMainLabel = document.getElementById('distanceMainLabel');
     const bearingText = document.getElementById('bearingText');
@@ -609,6 +620,9 @@
       return dirs[index];
     }
 
+    /* =========================================================
+     * MINECRAFT PIXEL COMPASS RENDERER
+     * ========================================================= */
     class MinecraftCompassRenderer {
       constructor() {
         this.frameCanvas = document.createElement('canvas');
@@ -655,7 +669,6 @@
       draw(destCtx, angleDegrees) {
         destCtx.imageSmoothingEnabled = false;
 
-        // 1. Sprite sheet render
         if (this.spriteLoaded && this.spriteImg.complete && this.frameCount > 0) {
           const normAngle = ((angleDegrees % 360) + 360) % 360;
           const frameIndex = Math.floor(normAngle / (360.0 / this.frameCount)) % this.frameCount;
@@ -675,11 +688,10 @@
           return;
         }
 
-        // 2. Procedural pixel-art fallback
+        // Procedural 16x16 fallback
         const fc = this.fCtx;
         fc.clearRect(0, 0, 16, 16);
 
-        // Bezel & Frame
         fc.fillStyle = '#1e1b18';
         fc.fillRect(4, 0, 8, 1); fc.fillRect(4, 15, 8, 1);
         fc.fillRect(0, 4, 1, 8); fc.fillRect(15, 4, 1, 8);
@@ -700,7 +712,6 @@
         fc.fillStyle = '#1a1815';
         fc.fillRect(5, 5, 6, 6);
 
-        // Needle
         const rad = ((angleDegrees - 90) * Math.PI) / 180;
         const cx = 7.5; const cy = 7.5;
         const tipX = Math.round(cx + Math.cos(rad) * 4.8);
@@ -723,6 +734,9 @@
 
     const compassRenderer = new MinecraftCompassRenderer();
 
+    /* =========================================================
+     * DECENTRALIZED REALTIME PUB/SUB NETWORKING (HOSTLESS)
+     * ========================================================= */
     function generateRoomCode(len = 6) {
       const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
       let code = '';
@@ -732,12 +746,90 @@
       return code;
     }
 
+    // Public redundant MQTT over WSS endpoints (Free, Serverless, No Phone Relay)
+    const MQTT_BROKERS = [
+      'wss://broker.hivemq.com:8884/mqtt',
+      'wss://broker.emqx.io:8084/mqtt'
+    ];
+    let currentBrokerIndex = 0;
+
+    function connectToMesh(roomCode) {
+      if (!roomCode) return;
+      roomCode = roomCode.trim().toUpperCase();
+      state.roomCode = roomCode;
+
+      // Close previous connection if active
+      if (state.mqttClient) {
+        try { state.mqttClient.end(true); } catch(e){}
+        state.mqttClient = null;
+      }
+
+      // Local browser tab synchronization
+      initLocalBroadcastChannel(roomCode);
+
+      updateStatusUI('CONNECTING MESH...', 'bg-amber-400 animate-pulse');
+      roomCodeDisplay.textContent = `ROOM: ${roomCode}`;
+
+      const brokerUrl = MQTT_BROKERS[currentBrokerIndex];
+      const topic = `irlmanhunt/rooms/${roomCode}`;
+
+      try {
+        const client = mqtt.connect(brokerUrl, {
+          clientId: state.myId,
+          clean: true,
+          connectTimeout: 5000,
+          reconnectPeriod: 2500,
+          keepalive: 20
+        });
+
+        state.mqttClient = client;
+
+        client.on('connect', () => {
+          state.isConnected = true;
+          updateStatusUI('ONLINE (MESH)', 'bg-emerald-500');
+          client.subscribe(topic, { qos: 0 }, (err) => {
+            if (!err) {
+              broadcastMyState();
+              showToast(`Connected to Room ${roomCode}!`);
+            }
+          });
+        });
+
+        client.on('message', (receivedTopic, message) => {
+          try {
+            const data = JSON.parse(message.toString());
+            handleIncomingPacket(data);
+          } catch(err) {
+            console.warn('Packet parse error:', err);
+          }
+        });
+
+        client.on('reconnect', () => {
+          updateStatusUI('RECONNECTING...', 'bg-yellow-500 animate-pulse');
+        });
+
+        client.on('offline', () => {
+          state.isConnected = false;
+          updateStatusUI('OFFLINE / RECONNECTING', 'bg-amber-600');
+        });
+
+        client.on('error', (err) => {
+          console.warn('Mesh broker error, switching broker:', err);
+          currentBrokerIndex = (currentBrokerIndex + 1) % MQTT_BROKERS.length;
+        });
+
+      } catch (err) {
+        console.warn('Direct WebSocket initialization error:', err);
+        updateStatusUI('LOCAL MESH ACTIVE', 'bg-cyan-600');
+      }
+    }
+
     function initLocalBroadcastChannel(roomCode) {
       if (state.bc) {
         try { state.bc.close(); } catch(e){}
       }
       try {
-        state.bc = new BroadcastChannel(`mc-lobby-${roomCode}`);
+        state.bc = new BroadcastChannel(`mc-mesh-${roomCode}`);
         state.bc.onmessage = (event) => {
           if (event.data) {
             handleIncomingPacket(event.data);
@@ -745,6 +837,104 @@
         };
       } catch (err) {
         console.warn('BroadcastChannel error:', err);
+      }
+    }
+
+    function handleIncomingPacket(data) {
+      if (!data || !data.id || data.id === state.myId) return;
+
+      const now = Date.now();
+      const peer = state.roster.get(data.id) || {};
+
+      peer.id = data.id;
+      peer.name = data.name || 'Player';
+      peer.role = data.role || 'seeker';
+      peer.lat = data.lat !== undefined ? data.lat : null;
+      peer.lon = data.lon !== undefined ? data.lon : null;
+      peer.heading = data.heading || 0;
+      peer.hasCompass = !!data.hasCompass;
+      peer.hasGps = !!data.hasGps;
+      peer.accuracy = data.accuracy || null;
+      peer.isHost = !!data.isHost;
+      peer.lastSeen = now;
+
+      // Update room host info if flagged
+      if (data.isHost) {
+        state.hostId = data.id;
+        state.hostName = data.name;
+        hostLeaderName.textContent = data.name;
+      }
+
+      // Real distance calculation
+      if (state.myLat !== null && state.myLon !== null && peer.lat !== null && peer.lon !== null) {
+        const meters = calculateHaversineDistance(state.myLat, state.myLon, peer.lat, peer.lon);
+        peer.distanceMeters = meters;
+        peer.distanceFeet = meters * 3.28084;
+      } else {
+        peer.distanceMeters = null;
+        peer.distanceFeet = null;
+      }
+
+      // Store in Map keyed strictly by persistent ID (Never duplicates!)
+      state.roster.set(data.id, peer);
+      updateRosterUI();
+    }
+
+    function pruneStalePlayers() {
+      const now = Date.now();
+      let changed = false;
+
+      state.roster.forEach((peer, peerId) => {
+        if (now - peer.lastSeen > STALE_TIMEOUT_MS) {
+          state.roster.delete(peerId);
+          changed = true;
+        }
+      });
+
+      // If the host left or went stale, reset host leader indicator
+      if (state.hostId && !state.roster.has(state.hostId) && !state.isRoomCreator) {
+        state.hostId = null;
+        state.hostName = 'None';
+        hostLeaderName.textContent = 'None';
+        changed = true;
+      }
+
+      if (changed) {
+        updateRosterUI();
+      }
+    }
+
+    setInterval(pruneStalePlayers, 1500);
+
+    function broadcastMyState() {
+      if (!state.roomCode) return;
+
+      const packet = {
+        id: state.myId,
+        name: state.myName,
+        role: state.myRole,
+        lat: state.myLat,
+        lon: state.myLon,
+        heading: state.deviceHeading,
+        hasCompass: state.motionPermitted,
+        hasGps: state.gpsPermitted && state.myLat !== null,
+        accuracy: state.myAccuracy,
+        isHost: state.isRoomCreator,
+        time: Date.now()
+      };
+
+      const payload = JSON.stringify(packet);
+
+      // 1. Send via decentralized MQTT mesh
+      if (state.mqttClient && state.mqttClient.connected) {
+        try {
+          state.mqttClient.publish(`irlmanhunt/rooms/${state.roomCode}`, payload, { qos: 0 });
+        } catch(e){}
+      }
+
+      // 2. Send via local BroadcastChannel
+      if (state.bc) {
+        try { state.bc.postMessage(packet); } catch(e){}
       }
     }
 
@@ -761,23 +951,50 @@
       let seekerCount = state.myRole === 'seeker' ? 1 : 0;
       let hiderCount = state.myRole === 'hider' ? 1 : 0;
 
-      // Add self
+      // Render Self
       const selfItem = document.createElement('div');
-      selfItem.className = 'flex justify-between items-center py-0.5 border-b border-white/5';
-      selfItem.innerHTML = `<span class="text-yellow-400 font-bold">${state.myName} (YOU)</span><span class="text-[8px] text-green-400">ACTIVE</span>`;
+      selfItem.className = 'flex flex-col py-1 border-b border-white/5 gap-0.5';
+      const myHostBadge = state.isRoomCreator ? '<span class="text-amber-400 font-bold mr-1">👑 HOST</span>' : '';
+      const myCompassIco = state.motionPermitted ? '<span class="text-green-400" title="Compass Active">🧭</span>' : '<span class="text-stone-500" title="Compass Off">🧭</span>';
+      const myGpsIco = (state.gpsPermitted && state.myLat !== null) ? '<span class="text-green-400" title="GPS Locked">📍</span>' : '<span class="text-amber-400 animate-pulse" title="Searching GPS">📍</span>';
+
+      selfItem.innerHTML = `
+        <div class="flex justify-between items-center">
+          <span class="text-yellow-400 font-bold">${myHostBadge}${state.myName} (YOU)</span>
+          <span class="text-[8px] text-green-400 font-mono">ONLINE</span>
+        </div>
+        <div class="flex justify-between items-center text-[8px] text-stone-400">
+          <span>Sensors: ${myCompassIco} ${myGpsIco}</span>
+          <span>${state.myAccuracy ? `±${Math.round(state.myAccuracy)}m` : 'No GPS'}</span>
+        </div>
+      `;
+
       if (state.myRole === 'seeker') {
         listSeekers.appendChild(selfItem);
       } else {
         listHiders.appendChild(selfItem);
       }
 
-      // Add peers
+      // Render Peers
       state.roster.forEach((peer) => {
         const item = document.createElement('div');
-        item.className = 'flex justify-between items-center py-0.5 border-b border-white/5';
-        
-        const distStr = peer.distanceFeet !== null ? `${Math.round(peer.distanceFeet)}ft` : 'No GPS';
-        item.innerHTML = `<span>${peer.name}</span><span class="text-[8px] text-stone-400">${distStr}</span>`;
+        item.className = 'flex flex-col py-1 border-b border-white/5 gap-0.5';
+
+        const hostBadge = peer.isHost ? '<span class="text-amber-400 font-bold mr-1">👑 HOST</span>' : '';
+        const compassIco = peer.hasCompass ? '<span class="text-green-400" title="Compass Active">🧭</span>' : '<span class="text-stone-500" title="Compass Off">🧭</span>';
+        const gpsIco = peer.hasGps ? '<span class="text-green-400" title="GPS Locked">📍</span>' : '<span class="text-amber-400" title="GPS Inactive">📍</span>';
+        const distStr = peer.distanceFeet !== null ? `${Math.round(peer.distanceFeet)}ft away` : (peer.hasGps ? 'Calculating...' : 'Waiting for GPS');
+
+        item.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="text-stone-200 font-semibold">${hostBadge}${peer.name}</span>
+            <span class="text-[8px] text-stone-300 font-mono">${distStr}</span>
+          </div>
+          <div class="flex justify-between items-center text-[8px] text-stone-400">
+            <span>Sensors: ${compassIco} ${gpsIco}</span>
+            <span class="text-emerald-400 text-[7px]">LIVE <1s</span>
+          </div>
+        `;
 
         if (peer.role === 'seeker') {
           seekerCount++;
@@ -792,244 +1009,47 @@
       document.getElementById('countHiders').textContent = hiderCount;
     }
 
-    function createHostLobby() {
-      state.isHost = true;
-      const code = generateRoomCode(6);
-      state.roomCode = code;
-      const hostPeerId = `MC-LOBBY-${code}`;
-
-      initLocalBroadcastChannel(code);
-      initPeer(hostPeerId, () => {
-        roomCodeDisplay.textContent = `ROOM: ${code}`;
-        document.getElementById('hostCodeValue').textContent = code;
-        updateStatusUI('LOBBY ACTIVE (1/16)', 'bg-emerald-500');
-
-        const joinUrl = new URL(window.location.href);
-        joinUrl.searchParams.set('room', code);
-
-        const qrcodeBox = document.getElementById('qrcodeBox');
-        qrcodeBox.innerHTML = '';
-        new QRCode(qrcodeBox, {
-          text: joinUrl.toString(),
-          width: 140,
-          height: 140,
-          colorDark: "#1a1815",
-          colorLight: "#ffffff",
-          correctLevel: QRCode.CorrectLevel.M
-        });
-      });
-    }
-
-    function joinLobby(code) {
-      if (!code) return;
-      code = code.trim().toUpperCase();
-      state.isHost = false;
-      state.roomCode = code;
-      const targetHostId = `MC-LOBBY-${code}`;
-
-      initLocalBroadcastChannel(code);
-      initPeer(null, () => {
-        roomCodeDisplay.textContent = `ROOM: ${code}`;
-        updateStatusUI('SEARCHING HOST...', 'bg-yellow-400 animate-pulse');
-
-        try {
-          const conn = state.peer.connect(targetHostId, {
-            reliable: true,
-            serialization: 'json'
-          });
-          state.clientHostConn = conn;
-
-          conn.on('open', () => {
-            state.isConnected = true;
-            updateStatusUI('CONNECTED TO LOBBY', 'bg-green-500');
-            showToast(`Connected to room ${code}!`);
-            broadcastMyState();
-          });
-
-          conn.on('data', (data) => {
-            handleIncomingPacket(data);
-          });
-
-          conn.on('close', () => {
-            state.isConnected = false;
-            updateStatusUI('LOBBY CLOSED', 'bg-red-500');
-          });
-
-          conn.on('error', (err) => {
-            console.warn('Peer connection error:', err);
-          });
-        } catch (err) {
-          console.warn('Lobby join error:', err);
-        }
-      });
-    }
-
-    let peerReconnectTimer = null;
-
-    function initPeer(customId = null, onReady = null) {
-      if (state.peer) {
-        try {
-          state.peer.removeAllListeners();
-          state.peer.destroy();
-        } catch(e){}
-        state.peer = null;
-      }
-
-      clearTimeout(peerReconnectTimer);
-      updateStatusUI('CONNECTING...', 'bg-yellow-500 animate-pulse');
-
-      try {
-        state.peer = new Peer(customId, {
-          debug: 1,
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              { urls: 'stun:stun2.l.google.com:19302' },
-              { urls: 'stun:stun.cloudflare.com:3478' }
-            ]
-          }
-        });
-
-        state.peer.on('open', (id) => {
-          state.myId = id;
-          if (onReady) onReady(id);
-        });
-
-        // Host receives incoming connections from up to 15 peers
-        state.peer.on('connection', (connection) => {
-          if (state.connections.size >= MAX_LOBBY_SIZE - 1) {
-            connection.close(); // Lobby full
-            return;
-          }
-
-          state.connections.set(connection.peer, connection);
-          updateStatusUI(`LOBBY ACTIVE (${state.connections.size + 1}/16)`, 'bg-emerald-500');
-
-          connection.on('data', (data) => {
-            handleIncomingPacket(data);
-
-            // Host relays this client's packet to all other clients
-            state.connections.forEach((conn, peerId) => {
-              if (peerId !== connection.peer && conn.open) {
-                try { conn.send(data); } catch(e){}
-              }
-            });
-          });
-
-          connection.on('close', () => {
-            state.connections.delete(connection.peer);
-            state.roster.delete(connection.peer);
-            updateRosterUI();
-            updateStatusUI(`LOBBY ACTIVE (${state.connections.size + 1}/16)`, 'bg-emerald-500');
-          });
-
-          // Send current full roster to newly joined player
-          broadcastMyState();
-        });
-
-        state.peer.on('disconnected', () => {
-          console.warn('Peer disconnected from signaling server, attempting reconnect...');
-          updateStatusUI('RECONNECTING...', 'bg-amber-500 animate-pulse');
-          if (state.peer && !state.peer.destroyed) {
-            try { state.peer.reconnect(); } catch(e){}
-          }
-        });
-
-        state.peer.on('error', (err) => {
-          console.warn('Peer error event:', err.type, err);
-
-          if (err.type === 'peer-unavailable') {
-            updateStatusUI('HOST NOT FOUND (WAITING)', 'bg-amber-500 animate-pulse');
-            // Auto retry joining the host after 2.5s in case host was still registering
-            if (!state.isHost && state.roomCode) {
-              clearTimeout(peerReconnectTimer);
-              peerReconnectTimer = setTimeout(() => {
-                console.log('Retrying connection to host...');
-                joinLobby(state.roomCode);
-              }, 2500);
-            }
-          } else if (err.type === 'unavailable-id') {
-            // Room code collision; regenerate if hosting
-            if (state.isHost) {
-              createHostLobby();
-            }
-          } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
-            updateStatusUI('OFFLINE / SIGNALING BLOCKED', 'bg-amber-600');
-            showToast('Signaling server unreachable. Disable ad-blockers / VPN.');
-          } else {
-            console.warn('Unhandled Peer error:', err);
-          }
-        });
-      } catch (err) {
-        console.warn('WebRTC restricted, fallback to BroadcastChannel:', err);
-        updateStatusUI('LOCAL MESH ONLY', 'bg-stone-600');
-      }
-    }
-
-    function handleIncomingPacket(data) {
-      if (!data || !data.id || data.id === state.myId) return;
-
-      if (data.type === 'player_update') {
-        const peer = state.roster.get(data.id) || {};
-        peer.id = data.id;
-        peer.name = data.name || 'Unknown';
-        peer.role = data.role || 'seeker';
-        peer.lat = data.lat !== undefined ? data.lat : null;
-        peer.lon = data.lon !== undefined ? data.lon : null;
-        peer.heading = data.heading || 0;
-        peer.lastSeen = Date.now();
-
-        // Calculate distance if both locations available
-        if (state.myLat !== null && state.myLon !== null && peer.lat !== null && peer.lon !== null) {
-          const meters = calculateHaversineDistance(state.myLat, state.myLon, peer.lat, peer.lon);
-          peer.distanceMeters = meters;
-          peer.distanceFeet = meters * 3.28084;
-        } else {
-          peer.distanceMeters = null;
-          peer.distanceFeet = null;
-        }
-
-        state.roster.set(data.id, peer);
-        updateRosterUI();
-      }
-    }
-
-    function broadcastMyState() {
-      const packet = {
-        type: 'player_update',
-        id: state.myId || 'local_user',
-        name: state.myName,
-        role: state.myRole,
-        lat: state.myLat,
-        lon: state.myLon,
-        heading: state.deviceHeading,
-        time: Date.now()
-      };
-
-      // 1. Host sends to all connected clients
-      if (state.isHost) {
-        state.connections.forEach((conn) => {
-          if (conn.open) {
-            try { conn.send(packet); } catch(e){}
-          }
-        });
-      }
-
-      // 2. Client sends to Host
-      if (state.clientHostConn && state.clientHostConn.open) {
-        try { state.clientHostConn.send(packet); } catch(e){}
-      }
-
-      // 3. Local mesh channel fallback
-      if (state.bc) {
-        try { state.bc.postMessage(packet); } catch(e){}
-      }
-    }
-
     function updateStatusUI(text, lightClass) {
       connStatusText.textContent = text;
       connLight.className = `w-2.5 h-2.5 rounded-full ${lightClass}`;
+    }
+
+    function createHostRoom() {
+      state.isRoomCreator = true;
+      const code = generateRoomCode(6);
+      state.roomCode = code;
+      state.hostName = state.myName;
+      state.hostId = state.myId;
+
+      hostLeaderName.textContent = state.myName;
+      myHostTag.classList.remove('hidden');
+
+      connectToMesh(code);
+
+      document.getElementById('hostCodeValue').textContent = code;
+      const joinUrl = new URL(window.location.href);
+      joinUrl.searchParams.set('room', code);
+
+      const qrcodeBox = document.getElementById('qrcodeBox');
+      qrcodeBox.innerHTML = '';
+      new QRCode(qrcodeBox, {
+        text: joinUrl.toString(),
+        width: 140,
+        height: 140,
+        colorDark: "#1a1815",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+
+      showToast(`Created room ${code}!`);
+    }
+
+    function joinRoom(code) {
+      if (!code) return;
+      code = code.trim().toUpperCase();
+      state.isRoomCreator = false;
+      myHostTag.classList.add('hidden');
+      connectToMesh(code);
     }
 
     document.getElementById('btnSaveName').addEventListener('click', () => {
@@ -1037,6 +1057,10 @@
       if (newName) {
         state.myName = newName;
         localStorage.setItem('mc_player_name', newName);
+        if (state.isRoomCreator) {
+          state.hostName = newName;
+          hostLeaderName.textContent = newName;
+        }
         showToast(`Saved name: ${newName}`);
         broadcastMyState();
         updateRosterUI();
@@ -1075,6 +1099,9 @@
     document.getElementById('btnRoleSeeker').addEventListener('click', () => setMyRole('seeker'));
     document.getElementById('btnRoleHider').addEventListener('click', () => setMyRole('hider'));
 
+    /* =========================================================
+     * MOBILE ORIENTATION & GPS HARDWARE HANDLING
+     * ========================================================= */
     async function requestDeviceOrientation() {
       const sourceLabel = document.getElementById('telSource');
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -1095,6 +1122,8 @@
         document.getElementById('btnRequestOrientation').classList.add('opacity-50');
         document.getElementById('btnRequestOrientation').textContent = '🧭 COMPASS ACTIVE';
       }
+      broadcastMyState();
+      updateRosterUI();
     }
 
     function bindOrientationListeners() {
@@ -1134,6 +1163,7 @@
           document.getElementById('btnRequestGps').textContent = '📍 GPS ACTIVE';
 
           broadcastMyState();
+          updateRosterUI();
         },
         (err) => console.warn('GPS error:', err.message),
         { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
@@ -1147,30 +1177,50 @@
       const opponentRole = state.myRole === 'seeker' ? 'hider' : 'seeker';
       let closest = null;
       let minDistanceMeters = Infinity;
+      let opponentWithoutGps = null;
 
       state.roster.forEach((peer) => {
-        if (peer.role === opponentRole && peer.lat !== null && peer.lon !== null && state.myLat !== null && state.myLon !== null) {
-          const dist = calculateHaversineDistance(state.myLat, state.myLon, peer.lat, peer.lon);
-          peer.distanceMeters = dist;
-          peer.distanceFeet = dist * 3.28084;
+        if (peer.role === opponentRole) {
+          if (peer.lat !== null && peer.lon !== null && state.myLat !== null && state.myLon !== null) {
+            const dist = calculateHaversineDistance(state.myLat, state.myLon, peer.lat, peer.lon);
+            peer.distanceMeters = dist;
+            peer.distanceFeet = dist * 3.28084;
 
-          if (dist < minDistanceMeters) {
-            minDistanceMeters = dist;
-            closest = {
-              id: peer.id,
-              name: peer.name,
-              role: peer.role,
-              distanceMeters: dist,
-              distanceFeet: dist * 3.28084,
-              bearing: calculateBearing(state.myLat, state.myLon, peer.lat, peer.lon)
-            };
+            if (dist < minDistanceMeters) {
+              minDistanceMeters = dist;
+              closest = {
+                id: peer.id,
+                name: peer.name,
+                role: peer.role,
+                distanceMeters: dist,
+                distanceFeet: dist * 3.28084,
+                bearing: calculateBearing(state.myLat, state.myLon, peer.lat, peer.lon),
+                hasGps: true
+              };
+            }
+          } else {
+            // Note presence even if GPS coordinates haven't arrived yet
+            if (!opponentWithoutGps) {
+              opponentWithoutGps = {
+                id: peer.id,
+                name: peer.name,
+                role: peer.role,
+                distanceMeters: null,
+                distanceFeet: null,
+                bearing: 0,
+                hasGps: false
+              };
+            }
           }
         }
       });
 
-      return closest;
+      return closest || opponentWithoutGps;
     }
 
+    /* =========================================================
+     * PHYSICS LOOP & COMPASS RENDERING
+     * ========================================================= */
     let lastTimestamp = performance.now();
 
     function updateCompassPhysics(dt) {
@@ -1194,18 +1244,18 @@
           role: state.myRole === 'seeker' ? 'hider' : 'seeker',
           distanceMeters: targetDistanceMeters,
           distanceFeet: targetDistanceMeters * 3.28084,
-          bearing: targetBearing
+          bearing: targetBearing,
+          hasGps: true
         };
       } else {
         // Real multi-peer targeting: Lock onto closest opponent on other team
         const closest = findNearestOpponent();
         state.trackedOpponent = closest;
 
-        if (closest) {
+        if (closest && closest.hasGps) {
           targetBearing = closest.bearing;
           targetDistanceMeters = closest.distanceMeters;
         } else {
-          // No opponents detected: Default point North (0°)
           targetBearing = 0;
           targetDistanceMeters = null;
         }
@@ -1271,46 +1321,53 @@
       // Overlay text updates
       needleDegText.textContent = state.isSpinning ? 'SPIN' : `${Math.round(state.needleDisplayAngle)}°`;
       cardinalText.textContent = getCardinal(state.deviceHeading);
-      bearingText.textContent = state.isSpinning ? '???' : (state.trackedOpponent ? `${Math.round(state.trackedOpponent.bearing)}°` : '0° (N)');
+      bearingText.textContent = state.isSpinning ? '???' : (state.trackedOpponent && state.trackedOpponent.hasGps ? `${Math.round(state.trackedOpponent.bearing)}°` : '0° (N)');
       headingText.textContent = `${Math.round(state.deviceHeading)}°`;
 
       // HUD Proximity and Targeting
       if (state.trackedOpponent) {
         const oppName = state.trackedOpponent.name;
         const oppRole = state.trackedOpponent.role.toUpperCase();
-        targetNameLabel.textContent = state.myRole === 'seeker' ? `TRACKING: ${oppName} (${oppRole})` : `EVADING: ${oppName} (${oppRole})`;
-        document.getElementById('telOpponentName').textContent = `${oppName} (${oppRole})`;
 
-        const feet = state.trackedOpponent.distanceFeet;
-        let tierText = '';
-        let tierClass = '';
+        if (state.trackedOpponent.hasGps) {
+          targetNameLabel.textContent = state.myRole === 'seeker' ? `TRACKING: ${oppName} (${oppRole})` : `EVADING: ${oppName} (${oppRole})`;
+          document.getElementById('telOpponentName').textContent = `${oppName} (${oppRole})`;
 
-        if (feet < NETHER_SPIN_FEET) {
-          if (state.myRole === 'seeker') {
-            tierText = '🎯 SEEK 🎯';
-            tierClass = 'text-emerald-400 animate-pulse text-base tracking-widest drop-shadow-[0_0_8px_rgba(52,211,153,0.9)]';
+          const feet = state.trackedOpponent.distanceFeet;
+          let tierText = '';
+          let tierClass = '';
+
+          if (feet < NETHER_SPIN_FEET) {
+            if (state.myRole === 'seeker') {
+              tierText = '🎯 SEEK 🎯';
+              tierClass = 'text-emerald-400 animate-pulse text-base tracking-widest drop-shadow-[0_0_8px_rgba(52,211,153,0.9)]';
+            } else {
+              tierText = '☠ HIDE ☠';
+              tierClass = 'text-red-500 animate-pulse text-base tracking-widest drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]';
+            }
+          } else if (feet <= 500) {
+            tierText = 'Close';
+            tierClass = 'text-amber-400 text-sm';
+          } else if (feet <= 1000) {
+            tierText = 'Closing in';
+            tierClass = 'text-yellow-300 text-sm';
+          } else if (feet <= 2500) {
+            tierText = 'Moderate';
+            tierClass = 'text-lime-300 text-sm';
+          } else if (feet <= 5000) {
+            tierText = 'Far';
+            tierClass = 'text-cyan-300 text-sm';
           } else {
-            tierText = '☠ HIDE ☠';
-            tierClass = 'text-red-500 animate-pulse text-base tracking-widest drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]';
+            tierText = 'Very Far';
+            tierClass = 'text-blue-300 text-sm';
           }
-        } else if (feet <= 500) {
-          tierText = 'Close';
-          tierClass = 'text-amber-400 text-sm';
-        } else if (feet <= 1000) {
-          tierText = 'Closing in';
-          tierClass = 'text-yellow-300 text-sm';
-        } else if (feet <= 2500) {
-          tierText = 'Moderate';
-          tierClass = 'text-lime-300 text-sm';
-        } else if (feet <= 5000) {
-          tierText = 'Far';
-          tierClass = 'text-cyan-300 text-sm';
-        } else {
-          tierText = 'Very Far';
-          tierClass = 'text-blue-300 text-sm';
-        }
 
-        distanceMainLabel.innerHTML = `<span class="${tierClass} font-bold">${tierText}</span>`;
+          distanceMainLabel.innerHTML = `<span class="${tierClass} font-bold">${tierText}</span>`;
+        } else {
+          targetNameLabel.textContent = `TARGET: ${oppName} (AWAITING GPS...)`;
+          distanceMainLabel.innerHTML = `<span class="text-amber-400 text-xs animate-pulse">ACQUIRING SATELLITE...</span>`;
+          document.getElementById('telOpponentName').textContent = `${oppName} (No GPS)`;
+        }
       } else {
         const oppType = state.myRole === 'seeker' ? 'HIDERS' : 'SEEKERS';
         targetNameLabel.textContent = `WAITING FOR ${oppType}...`;
@@ -1351,7 +1408,7 @@
     document.getElementById('closeTelemetryPanel').addEventListener('click', () => tabs.telemetry.panel.classList.add('hidden'));
     document.getElementById('closeSimPanel').addEventListener('click', () => tabs.sim.panel.classList.add('hidden'));
 
-    // Host & Join buttons
+    // Mode toggles
     const btnModeHost = document.getElementById('btnModeHost');
     const btnModeJoin = document.getElementById('btnModeJoin');
     const hostSection = document.getElementById('hostSection');
@@ -1362,7 +1419,7 @@
       joinSection.classList.add('hidden');
       btnModeHost.classList.add('mc-btn-green');
       btnModeJoin.classList.remove('mc-btn-green');
-      if (!state.roomCode) createHostLobby();
+      if (!state.roomCode) createHostRoom();
     });
 
     btnModeJoin.addEventListener('click', () => {
@@ -1374,7 +1431,7 @@
 
     document.getElementById('btnSubmitJoin').addEventListener('click', () => {
       const code = document.getElementById('inputRoomCode').value;
-      if (code) joinLobby(code);
+      if (code) joinRoom(code);
     });
 
     document.getElementById('btnCopyInvite').addEventListener('click', () => {
@@ -1553,31 +1610,44 @@
       }
     });
 
+    // Custom Sprite loader
+    document.getElementById('inputSpriteFile').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          compassRenderer.loadSprite(evt.target.result);
+          showToast("Loaded custom sprite PNG!");
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
     // Modals
     const helpModal = document.getElementById('helpModal');
     document.getElementById('helpModalBtn').addEventListener('click', () => helpModal.classList.remove('hidden'));
     document.getElementById('closeHelpModal').addEventListener('click', () => helpModal.classList.add('hidden'));
     document.getElementById('btnCloseHelpModalBtn').addEventListener('click', () => helpModal.classList.add('hidden'));
 
-    // Boot sequence
     window.addEventListener('DOMContentLoaded', () => {
       updateRosterUI();
 
+      // Transmit state at 2.5Hz (400ms interval)
       setInterval(() => {
-        if (state.isConnected || state.isHost) {
+        if (state.isConnected || state.roomCode) {
           broadcastMyState();
         }
-      }, 500);
+      }, 400);
 
+      // Check URL room parameter
       const params = new URLSearchParams(window.location.search);
       const roomParam = params.get('room');
       if (roomParam) {
         document.getElementById('inputRoomCode').value = roomParam.toUpperCase();
         toggleTab('connect');
         btnModeJoin.click();
-        joinLobby(roomParam);
+        joinRoom(roomParam);
       } else {
-        // Start in clean idle mode; prompt player to host or join
         updateStatusUI('READY (CHOOSE ROOM)', 'bg-stone-600');
         toggleTab('connect');
       }
