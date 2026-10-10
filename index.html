@@ -802,7 +802,7 @@
       initPeer(hostPeerId, () => {
         roomCodeDisplay.textContent = `ROOM: ${code}`;
         document.getElementById('hostCodeValue').textContent = code;
-        updateStatusUI('WAITING FOR PLAYERS (HOST)', 'bg-amber-400 animate-pulse');
+        updateStatusUI('LOBBY ACTIVE (1/16)', 'bg-emerald-500');
 
         const joinUrl = new URL(window.location.href);
         joinUrl.searchParams.set('room', code);
@@ -830,10 +830,13 @@
       initLocalBroadcastChannel(code);
       initPeer(null, () => {
         roomCodeDisplay.textContent = `ROOM: ${code}`;
-        updateStatusUI('JOINING LOBBY...', 'bg-yellow-400 animate-pulse');
+        updateStatusUI('SEARCHING HOST...', 'bg-yellow-400 animate-pulse');
 
         try {
-          const conn = state.peer.connect(targetHostId, { reliable: true });
+          const conn = state.peer.connect(targetHostId, {
+            reliable: true,
+            serialization: 'json'
+          });
           state.clientHostConn = conn;
 
           conn.on('open', () => {
@@ -851,26 +854,39 @@
             state.isConnected = false;
             updateStatusUI('LOBBY CLOSED', 'bg-red-500');
           });
+
+          conn.on('error', (err) => {
+            console.warn('Peer connection error:', err);
+          });
         } catch (err) {
           console.warn('Lobby join error:', err);
         }
       });
     }
 
+    let peerReconnectTimer = null;
+
     function initPeer(customId = null, onReady = null) {
       if (state.peer) {
-        try { state.peer.destroy(); } catch(e){}
+        try {
+          state.peer.removeAllListeners();
+          state.peer.destroy();
+        } catch(e){}
+        state.peer = null;
       }
 
-      updateStatusUI('INITIALIZING...', 'bg-yellow-500 animate-pulse');
+      clearTimeout(peerReconnectTimer);
+      updateStatusUI('CONNECTING...', 'bg-yellow-500 animate-pulse');
 
       try {
         state.peer = new Peer(customId, {
-          debug: 0,
+          debug: 1,
           config: {
             iceServers: [
               { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' }
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' },
+              { urls: 'stun:stun.cloudflare.com:3478' }
             ]
           }
         });
@@ -912,12 +928,42 @@
           broadcastMyState();
         });
 
+        state.peer.on('disconnected', () => {
+          console.warn('Peer disconnected from signaling server, attempting reconnect...');
+          updateStatusUI('RECONNECTING...', 'bg-amber-500 animate-pulse');
+          if (state.peer && !state.peer.destroyed) {
+            try { state.peer.reconnect(); } catch(e){}
+          }
+        });
+
         state.peer.on('error', (err) => {
-          console.warn('Peer error:', err);
-          updateStatusUI('OFFLINE / LOCAL', 'bg-amber-600');
+          console.warn('Peer error event:', err.type, err);
+
+          if (err.type === 'peer-unavailable') {
+            updateStatusUI('HOST NOT FOUND (WAITING)', 'bg-amber-500 animate-pulse');
+            // Auto retry joining the host after 2.5s in case host was still registering
+            if (!state.isHost && state.roomCode) {
+              clearTimeout(peerReconnectTimer);
+              peerReconnectTimer = setTimeout(() => {
+                console.log('Retrying connection to host...');
+                joinLobby(state.roomCode);
+              }, 2500);
+            }
+          } else if (err.type === 'unavailable-id') {
+            // Room code collision; regenerate if hosting
+            if (state.isHost) {
+              createHostLobby();
+            }
+          } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
+            updateStatusUI('OFFLINE / SIGNALING BLOCKED', 'bg-amber-600');
+            showToast('Signaling server unreachable. Disable ad-blockers / VPN.');
+          } else {
+            console.warn('Unhandled Peer error:', err);
+          }
         });
       } catch (err) {
         console.warn('WebRTC restricted, fallback to BroadcastChannel:', err);
+        updateStatusUI('LOCAL MESH ONLY', 'bg-stone-600');
       }
     }
 
@@ -1531,7 +1577,9 @@
         btnModeJoin.click();
         joinLobby(roomParam);
       } else {
-        createHostLobby();
+        // Start in clean idle mode; prompt player to host or join
+        updateStatusUI('READY (CHOOSE ROOM)', 'bg-stone-600');
+        toggleTab('connect');
       }
 
       requestAnimationFrame(renderLoop);
